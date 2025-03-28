@@ -1,32 +1,44 @@
-import { ContentRef, DocumentTableViewCards, SiteInsightsLinkPosition } from '@gitbook/api';
-import React from 'react';
+import {
+    type ContentRef,
+    type DocumentTableViewCards,
+    SiteInsightsLinkPosition,
+} from '@gitbook/api';
 
 import { Link } from '@/components/primitives';
 import { Image } from '@/components/utils';
-import { ClassValue, tcls } from '@/lib/tailwind';
+import { resolveContentRef } from '@/lib/references';
+import { type ClassValue, tcls } from '@/lib/tailwind';
 
 import { RecordColumnValue } from './RecordColumnValue';
-import { TableRecordKV, TableViewProps } from './Table';
+import type { TableRecordKV, TableViewProps } from './Table';
 import { getRecordValue } from './utils';
 
 export async function RecordCard(
     props: TableViewProps<DocumentTableViewCards> & {
         record: TableRecordKV;
-    },
+    }
 ) {
     const { view, record, context, block, isOffscreen } = props;
 
     const coverFile = view.coverDefinition
         ? getRecordValue<string[]>(record[1], view.coverDefinition)?.[0]
         : null;
-    const cover = coverFile
-        ? await context.resolveContentRef({ kind: 'file', file: coverFile })
-        : null;
+    const cover =
+        coverFile && context.contentContext
+            ? await resolveContentRef({ kind: 'file', file: coverFile }, context.contentContext)
+            : null;
 
     const targetRef = view.targetDefinition
         ? (record[1].values[view.targetDefinition] as ContentRef)
         : null;
-    const target = targetRef ? await context.resolveContentRef(targetRef) : null;
+    const target =
+        targetRef && context.contentContext
+            ? await resolveContentRef(targetRef, context.contentContext)
+            : null;
+
+    const coverIsSquareOrPortrait =
+        cover?.file?.dimensions &&
+        cover.file?.dimensions?.width / cover.file?.dimensions?.height <= 1;
 
     const body = (
         <div
@@ -42,17 +54,21 @@ export async function RecordCard(
                 'rounded-[7px]',
                 'straight-corners:rounded-none',
                 'overflow-hidden',
-                '[&_.heading]:flip-heading-hash',
+                '[&_.heading>div:first-child]:hidden',
+                '[&_.heading>div]:text-[.8em]',
+                'md:[&_.heading>div]:text-[1em]',
                 '[&_.blocks:first-child_.heading:first-child_div]:mt-0', // Remove margin on first heading in card
 
-                cover
+                // On mobile, check if we can display the cover responsively or not:
+                // - If the file has a landscape aspect ratio, we display it normally
+                // - If the file is square or portrait, we display it left with 40% of the card width
+                coverIsSquareOrPortrait
                     ? [
-                          // On mobile, the cover is displayed on the left with 40% of the width
                           'grid-cols-[40%,_1fr]',
                           'min-[432px]:grid-cols-none',
                           'min-[432px]:grid-rows-[auto,1fr]',
                       ]
-                    : null,
+                    : 'grid-rows-[auto,1fr]'
             )}
         >
             {cover ? (
@@ -69,13 +85,15 @@ export async function RecordCard(
                             width: view.cardSize === 'medium' ? 245 : 376,
                         },
                     ]}
+                    resize={context.contentContext?.imageResizer}
                     className={tcls(
                         'min-w-0',
                         'w-full',
                         'h-full',
                         'object-cover',
-                        'min-[432px]:h-auto',
-                        'min-[432px]:aspect-video',
+                        coverIsSquareOrPortrait
+                            ? ['min-[432px]:h-auto', 'min-[432px]:aspect-video']
+                            : ['h-auto', 'aspect-video']
                     )}
                     priority={isOffscreen ? 'lazy' : 'high'}
                     preload
@@ -93,7 +111,7 @@ export async function RecordCard(
                     'text-sm',
                     target
                         ? ['transition-colors', 'text-tint', 'group-hover:text-tint-strong']
-                        : ['text-tint-strong'],
+                        : ['text-tint-strong']
                 )}
             >
                 {view.columns.map((column) => {

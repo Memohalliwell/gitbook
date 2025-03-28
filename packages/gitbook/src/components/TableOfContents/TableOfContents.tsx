@@ -1,16 +1,7 @@
-import {
-    CustomizationSettings,
-    Revision,
-    RevisionPageDocument,
-    RevisionPageGroup,
-    SiteCustomizationSettings,
-    SiteInsightsTrademarkPlacement,
-    Space,
-} from '@gitbook/api';
-import React from 'react';
+import { SiteInsightsTrademarkPlacement } from '@gitbook/api';
+import type { GitBookSiteContext } from '@v2/lib/context';
+import type React from 'react';
 
-import { SiteContentPointer } from '@/lib/api';
-import { ContentRefContext } from '@/lib/references';
 import { tcls } from '@/lib/tailwind';
 
 import { PagesList } from './PagesList';
@@ -18,33 +9,25 @@ import { TOCScrollContainer } from './TOCScroller';
 import { Trademark } from './Trademark';
 
 export function TableOfContents(props: {
-    space: Space;
-    customization: CustomizationSettings | SiteCustomizationSettings;
-    content: SiteContentPointer;
-    context: ContentRefContext;
-    pages: Revision['pages'];
-    ancestors: Array<RevisionPageDocument | RevisionPageGroup>;
+    context: GitBookSiteContext;
     header?: React.ReactNode; // Displayed outside the scrollable TOC as a sticky header
-    headerOffset: {
-        sectionsHeader: boolean;
-        topHeader: boolean;
-    };
     innerHeader?: React.ReactNode; // Displayed outside the scrollable TOC, directly above the page list
 }) {
-    const { innerHeader, space, customization, pages, ancestors, header, context, headerOffset } =
-        props;
+    const { innerHeader, context, header } = props;
+    const { space, customization, pages } = context;
 
     return (
         <aside // Sidebar container, responsible for setting the right dimensions and position for the sidebar.
             data-testid="table-of-contents"
             className={tcls(
                 'group',
-                'page-no-toc:hidden',
+                'text-sm',
 
                 'grow-0',
                 'shrink-0',
                 'basis-full',
                 'lg:basis-72',
+                'page-no-toc:lg:basis-56',
 
                 'relative',
                 'z-[1]',
@@ -64,15 +47,19 @@ export function TableOfContents(props: {
                 'pt-6',
                 'pb-4',
                 'sidebar-filled:lg:pr-6',
+                'page-no-toc:lg:pr-0',
 
                 'hidden',
-                'navigation-open:flex',
+                'navigation-open:!flex',
                 'lg:flex',
+                'page-no-toc:lg:hidden',
+                'page-no-toc:xl:flex',
+                'site-header-none:page-no-toc:lg:flex',
                 'flex-col',
                 'gap-4',
 
                 'navigation-open:border-b',
-                'border-tint-subtle',
+                'border-tint-subtle'
             )}
         >
             {header && header}
@@ -87,10 +74,14 @@ export function TableOfContents(props: {
                     'flex-grow',
 
                     'sidebar-filled:bg-tint-subtle',
-                    '[html.tint.sidebar-filled_&]:bg-tint-base',
+                    'theme-muted:bg-tint-subtle',
+                    'theme-bold-tint:bg-tint-subtle',
+                    '[html.sidebar-filled.theme-muted_&]:bg-tint-base',
+                    '[html.sidebar-filled.theme-bold.tint_&]:bg-tint-base',
+                    'page-no-toc:!bg-transparent',
 
                     'sidebar-filled:rounded-xl',
-                    'straight-corners:rounded-none',
+                    'straight-corners:rounded-none'
                 )}
             >
                 {innerHeader && <div className={tcls('px-5 *:my-4')}>{innerHeader}</div>}
@@ -109,15 +100,18 @@ export function TableOfContents(props: {
                         '[&::-webkit-scrollbar-thumb]:bg-transparent',
                         'group-hover:[&::-webkit-scrollbar]:bg-tint-subtle',
                         'group-hover:[&::-webkit-scrollbar-thumb]:bg-tint-7',
-                        'group-hover:[&::-webkit-scrollbar-thumb:hover]:bg-tint-8',
+                        'group-hover:[&::-webkit-scrollbar-thumb:hover]:bg-tint-8'
                     )}
                 >
                     <PagesList
                         rootPages={pages}
                         pages={pages}
-                        ancestors={ancestors}
                         context={context}
-                        style={tcls('sidebar-list-line:border-l', 'border-tint-subtle')}
+                        style={tcls(
+                            'page-no-toc:hidden',
+                            'sidebar-list-line:border-l',
+                            'border-tint-subtle'
+                        )}
                     />
                     {customization.trademark.enabled ? (
                         <Trademark

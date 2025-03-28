@@ -1,23 +1,13 @@
-import {
-    CustomizationHeaderPreset,
-    CustomizationSettings,
-    Site,
-    SiteCustomizationSettings,
-    Space,
-} from '@gitbook/api';
+import type { GitBookSiteContext } from '@v2/lib/context';
 
 import { Image } from '@/components/utils';
-import { getAbsoluteHref } from '@/lib/links';
 import { tcls } from '@/lib/tailwind';
-import { getContentTitle } from '@/lib/utils';
 
 import { Link } from '../primitives';
-import { SpaceIcon } from '../Space/SpaceIcon';
+import { CurrentContentIcon } from './CurrentContentIcon';
 
 interface HeaderLogoProps {
-    site: Site | null;
-    space: Space;
-    customization: CustomizationSettings | SiteCustomizationSettings;
+    context: GitBookSiteContext;
 }
 
 /**
@@ -25,17 +15,18 @@ interface HeaderLogoProps {
  */
 
 export async function HeaderLogo(props: HeaderLogoProps) {
-    const { customization } = props;
-    const href = await getAbsoluteHref('');
+    const { context } = props;
+    const { customization, linker } = context;
 
     return (
         <Link
-            href={href}
+            href={linker.toAbsoluteURL(linker.toPathInSpace(''))}
             className={tcls('group/headerlogo', 'min-w-0', 'shrink', 'flex', 'items-center')}
         >
             {customization.header.logo ? (
                 <Image
                     alt="Logo"
+                    resize={context.imageResizer}
                     sources={{
                         light: {
                             src: customization.header.logo.light,
@@ -64,10 +55,11 @@ export async function HeaderLogo(props: HeaderLogoProps) {
                         'min-w-0',
                         'max-w-40',
                         'lg:max-w-64',
+                        'site-header-none:page-no-toc:lg:max-w-56',
                         'max-h-10',
                         'lg:max-h-12',
                         'h-full',
-                        'w-auto',
+                        'w-auto'
                     )}
                 />
             ) : (
@@ -78,15 +70,13 @@ export async function HeaderLogo(props: HeaderLogoProps) {
 }
 
 function LogoFallback(props: HeaderLogoProps) {
-    const { site, space, customization } = props;
-    const customIcon = 'icon' in customization.favicon ? customization.favicon.icon : undefined;
-    const customEmoji = 'emoji' in customization.favicon ? customization.favicon.emoji : undefined;
+    const { context } = props;
+    const { site } = context;
 
     return (
         <>
-            <SpaceIcon
-                icon={customIcon}
-                emoji={customEmoji}
+            <CurrentContentIcon
+                context={context}
                 alt=""
                 sizes={[{ width: 32 }]}
                 style={['object-contain', 'size-8']}
@@ -95,7 +85,7 @@ function LogoFallback(props: HeaderLogoProps) {
             <div
                 className={tcls(
                     'text-pretty',
-                    'line-clamp-3',
+                    'line-clamp-2',
                     'tracking-tight',
                     'max-w-[18ch]',
                     'lg:max-w-[24ch]',
@@ -103,13 +93,11 @@ function LogoFallback(props: HeaderLogoProps) {
                     'ms-3',
                     'text-base/tight',
                     'lg:text-lg/tight',
-                    customization.header.preset === CustomizationHeaderPreset.Default ||
-                        customization.header.preset === CustomizationHeaderPreset.None
-                        ? 'text-tint-strong'
-                        : 'text-header-link',
+                    'text-tint-strong',
+                    'theme-bold:text-header-link'
                 )}
             >
-                {getContentTitle(space, customization, site)}
+                {site.title}
             </div>
         </>
     );

@@ -1,10 +1,10 @@
-import { DocumentBlockTabs } from '@gitbook/api';
+import type { DocumentBlockTabs } from '@gitbook/api';
 
 import { tcls } from '@/lib/tailwind';
 
-import { DynamicTabs, TabsItem } from './DynamicTabs';
-import { BlockProps } from '../Block';
+import type { BlockProps } from '../Block';
 import { Blocks } from '../Blocks';
+import { DynamicTabs, type TabsItem } from './DynamicTabs';
 
 export function Tabs(props: BlockProps<DocumentBlockTabs>) {
     const { block, ancestorBlocks, document, style, context } = props;
@@ -20,13 +20,14 @@ export function Tabs(props: BlockProps<DocumentBlockTabs>) {
 
         tabsBody.push(
             <Blocks
+                key={tab.key ?? index}
                 nodes={tab.nodes}
                 document={document}
                 ancestorBlocks={[...ancestorBlocks, block, tab]}
                 context={context}
                 blockStyle={tcls('flip-heading-hash')}
                 style={tcls('w-full', 'space-y-4')}
-            />,
+            />
         );
     });
 

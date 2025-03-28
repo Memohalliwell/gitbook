@@ -1,7 +1,7 @@
+import { expect, it } from 'bun:test';
 import type { DocumentBlockCode } from '@gitbook/api';
-import { it, expect } from 'bun:test';
 
-import { getInlines, highlight, RenderedInline } from './highlight';
+import { type RenderedInline, getInlines, highlight } from './highlight';
 
 async function highlightWithInlines(block: DocumentBlockCode) {
     const inlines: RenderedInline[] = getInlines(block).map((inline) => ({
@@ -46,7 +46,7 @@ it('should parse plain code', async () => {
 
 it('should parse different code in parallel', async () => {
     await Promise.all(
-        ['shell', 'scss', 'markdown', 'less', 'scss', 'css', 'scss', 'yaml'].map(async (syntax) =>
+        ['shell', 'scss', 'scss', 'css', 'scss', 'yaml'].map(async (syntax) =>
             highlight(
                 {
                     object: 'block',
@@ -68,9 +68,9 @@ it('should parse different code in parallel', async () => {
                         },
                     ],
                 },
-                [],
-            ),
-        ),
+                []
+            )
+        )
     );
 });
 

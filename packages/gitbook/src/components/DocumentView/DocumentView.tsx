@@ -1,8 +1,6 @@
-import { ContentRef, JSONDocument } from '@gitbook/api';
-
-import { ContentTarget } from '@/lib/api';
-import { ContentRefContext, ResolveContentRefOptions, ResolvedContentRef } from '@/lib/references';
-import { ClassValue } from '@/lib/tailwind';
+import type { ClassValue } from '@/lib/tailwind';
+import type { JSONDocument } from '@gitbook/api';
+import type { GitBookAnyContext } from '@v2/lib/context';
 
 import { BlockSkeleton } from './Block';
 import { Blocks } from './Blocks';
@@ -16,22 +14,9 @@ export interface DocumentContext {
 
     /**
      * Space content being rendered.
-     */
-    content?: ContentTarget;
-
-    /**
-     * The context for resolving content refs.
      * If null, content refs cannot be resolved.
      */
-    contentRefContext: ContentRefContext | null;
-
-    /**
-     * Resolve a content reference.
-     */
-    resolveContentRef: (
-        ref: ContentRef,
-        options?: ResolveContentRefOptions,
-    ) => Promise<ResolvedContentRef | null>;
+    contentContext?: GitBookAnyContext;
 
     /**
      * Transform an ID to be added to the DOM.
@@ -61,9 +46,12 @@ export function DocumentView(
 
         /** Style passed to all blocks */
         blockStyle?: ClassValue;
-    },
+
+        /** True if the document should be considered offscreen */
+        isOffscreen?: boolean;
+    }
 ) {
-    const { document, style, blockStyle = [], context } = props;
+    const { document, style, blockStyle = [], context, isOffscreen = false } = props;
 
     return (
         <Blocks
@@ -77,6 +65,7 @@ export function DocumentView(
                 'whitespace-pre-wrap',
             ]}
             context={context}
+            isOffscreen={isOffscreen}
         />
     );
 }
@@ -89,12 +78,12 @@ export function DocumentViewSkeleton(props: { document: JSONDocument; blockStyle
 
     return (
         <div className="flex flex-col gap-4">
-            {document.nodes.map((block, index) => (
+            {document.nodes.map((block) => (
                 <BlockSkeleton
                     key={block.key!}
                     block={block}
                     style={[
-                        'w-full mx-auto decoration-primary/6',
+                        'mx-auto w-full decoration-primary/6',
                         block.data && 'fullWidth' in block.data && block.data.fullWidth
                             ? 'max-w-screen-xl'
                             : 'max-w-3xl',

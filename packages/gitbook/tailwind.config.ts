@@ -3,10 +3,12 @@ import typography from '@tailwindcss/typography';
 import type { Config } from 'tailwindcss';
 import plugin from 'tailwindcss/plugin';
 
-import { ColorCategory, hexToRgb, scale, shadesOfColor } from './src/lib/colors';
+import { ColorCategory, hexToRgb, scale, shadesOfColor } from '@gitbook/colors';
 
 export const shades = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900];
 export const opacities = [0, 4, 8, 12, 16, 24, 40, 64, 72, 88, 96, 100];
+
+export const semanticColors = ['info', 'warning', 'danger', 'success'];
 
 /**
  * Generate a Tailwind color shades from a variable.
@@ -14,17 +16,17 @@ export const opacities = [0, 4, 8, 12, 16, 24, 40, 64, 72, 88, 96, 100];
 function generateVarShades(varName: string, filter: ColorCategory[] = []) {
     const result: { [key: string]: string } = {};
 
-    Object.entries(scale).forEach(([categoryName, category]) => {
+    for (const [categoryName, category] of Object.entries(scale)) {
         if (filter.length === 0 || filter.includes(categoryName as ColorCategory)) {
-            Object.entries(category).forEach(([key, value]) => {
+            for (const [key, value] of Object.entries(category)) {
                 if (filter.length > 0) {
                     result[key] = `rgb(var(--${varName}-${value}))`;
                 } else {
                     result[value] = `rgb(var(--${varName}-${value}))`;
                 }
-            });
+            }
         }
-    });
+    }
 
     return result;
 }
@@ -39,7 +41,7 @@ function generateShades(color: string) {
             acc[shade] = `rgb(${hexToRgb(rawShades[`${shade}`])} / <alpha-value>)`;
             return acc;
         },
-        {} as Record<string, string>,
+        {} as Record<string, string>
     );
 
     shadeMap.DEFAULT = shadeMap[500];
@@ -53,7 +55,7 @@ function opacity() {
             acc[index] = `${opacity / 100}`;
             return acc;
         },
-        {} as Record<string, string>,
+        {} as Record<string, string>
     );
 }
 
@@ -75,9 +77,10 @@ const config: Config = {
                 emoji: [
                     'Apple Color Emoji',
                     'Noto Color Emoji',
-                    '--font-noto-color-emoji',
+                    'var(--font-noto-color-emoji)',
                     'sans-serif',
                 ],
+                custom: ['var(--font-custom)'],
                 var: ['var(--font-family)'],
             },
             colors: {
@@ -100,6 +103,18 @@ const config: Config = {
 
                 'header-background': 'rgb(var(--header-background))',
                 'header-link': 'rgb(var(--header-link))',
+
+                // Add each semantic color
+                ...Object.fromEntries(
+                    semanticColors.map((color) => [color, generateVarShades(color)])
+                ),
+                ...Object.fromEntries(
+                    semanticColors.map((color) => [
+                        `contrast-${color}`,
+                        generateVarShades(`contrast-${color}`),
+                    ])
+                ),
+
                 yellow: generateShades('#f4e28d'),
                 teal: generateShades('#3f89a1'),
                 pomegranate: generateShades('#f25b3a'),
@@ -127,6 +142,17 @@ const config: Config = {
                     ColorCategory.components,
                     ColorCategory.accents,
                 ]),
+                // Semantic colors
+                ...Object.fromEntries(
+                    semanticColors.map((color) => [
+                        color,
+                        generateVarShades(color, [
+                            ColorCategory.backgrounds,
+                            ColorCategory.components,
+                            ColorCategory.accents,
+                        ]),
+                    ])
+                ),
             },
             gradientColorStops: {
                 primary: generateVarShades('primary', [
@@ -144,26 +170,71 @@ const config: Config = {
                     ColorCategory.components,
                     ColorCategory.accents,
                 ]),
+                // Semantic colors
+                ...Object.fromEntries(
+                    semanticColors.map((color) => [
+                        color,
+                        generateVarShades(color, [
+                            ColorCategory.backgrounds,
+                            ColorCategory.components,
+                            ColorCategory.accents,
+                        ]),
+                    ])
+                ),
             },
             borderColor: {
-                primary: generateVarShades('primary', [ColorCategory.borders]),
-                tint: generateVarShades('tint', [ColorCategory.borders]),
-                neutral: generateVarShades('neutral', [ColorCategory.borders]),
+                primary: generateVarShades('primary', [
+                    ColorCategory.borders,
+                    ColorCategory.accents,
+                ]),
+                tint: generateVarShades('tint', [ColorCategory.borders, ColorCategory.accents]),
+                neutral: generateVarShades('neutral', [
+                    ColorCategory.borders,
+                    ColorCategory.accents,
+                ]),
+                // Semantic colors
+                ...Object.fromEntries(
+                    semanticColors.map((color) => [
+                        color,
+                        generateVarShades(color, [ColorCategory.borders, ColorCategory.accents]),
+                    ])
+                ),
             },
             ringColor: {
                 primary: generateVarShades('primary', [ColorCategory.borders]),
                 tint: generateVarShades('tint', [ColorCategory.borders]),
                 neutral: generateVarShades('neutral', [ColorCategory.borders]),
+                // Semantic colors
+                ...Object.fromEntries(
+                    semanticColors.map((color) => [
+                        color,
+                        generateVarShades(color, [ColorCategory.borders]),
+                    ])
+                ),
             },
             outlineColor: {
                 primary: generateVarShades('primary', [ColorCategory.borders]),
                 tint: generateVarShades('tint', [ColorCategory.borders]),
                 neutral: generateVarShades('neutral', [ColorCategory.borders]),
+                // Semantic colors
+                ...Object.fromEntries(
+                    semanticColors.map((color) => [
+                        color,
+                        generateVarShades(color, [ColorCategory.borders]),
+                    ])
+                ),
             },
             boxShadowColor: {
                 primary: generateVarShades('primary', [ColorCategory.borders]),
                 tint: generateVarShades('tint', [ColorCategory.borders]),
                 neutral: generateVarShades('neutral', [ColorCategory.borders]),
+                // Semantic colors
+                ...Object.fromEntries(
+                    semanticColors.map((color) => [
+                        color,
+                        generateVarShades(color, [ColorCategory.borders]),
+                    ])
+                ),
             },
             textColor: {
                 primary: generateVarShades('primary', [ColorCategory.text]),
@@ -181,6 +252,18 @@ const config: Config = {
                     ColorCategory.backgrounds,
                     ColorCategory.accents,
                 ]),
+                ...Object.fromEntries(
+                    semanticColors.flatMap((color) => [
+                        [color, generateVarShades(color, [ColorCategory.text])],
+                        [
+                            `contrast-${color}`,
+                            generateVarShades(`contrast-${color}`, [
+                                ColorCategory.backgrounds,
+                                ColorCategory.accents,
+                            ]),
+                        ],
+                    ])
+                ),
             },
             textDecorationColor: {
                 primary: generateVarShades('primary', [ColorCategory.text]),
@@ -198,13 +281,25 @@ const config: Config = {
                     ColorCategory.backgrounds,
                     ColorCategory.accents,
                 ]),
+                ...Object.fromEntries(
+                    semanticColors.flatMap((color) => [
+                        [color, generateVarShades(color, [ColorCategory.text])],
+                        [
+                            `contrast-${color}`,
+                            generateVarShades(`contrast-${color}`, [
+                                ColorCategory.backgrounds,
+                                ColorCategory.accents,
+                            ]),
+                        ],
+                    ])
+                ),
             },
             animation: {
                 present: 'present .5s ease-out both',
                 scaleIn: 'scaleIn 200ms ease',
                 scaleOut: 'scaleOut 200ms ease',
-                fadeIn: 'fadeIn 200ms ease',
-                fadeOut: 'fadeOut 200ms ease',
+                fadeIn: 'fadeIn 200ms ease forwards',
+                fadeOut: 'fadeOut 200ms ease forwards',
                 enterFromLeft: 'enterFromLeft 250ms ease',
                 enterFromRight: 'enterFromRight 250ms ease',
                 exitToLeft: 'exitToLeft 250ms ease',
@@ -353,7 +448,7 @@ const config: Config = {
         opacity: opacity(),
     },
     plugins: [
-        plugin(function ({ addVariant }) {
+        plugin(({ addVariant }) => {
             /**
              * Variant when the Table of Content navigation is open.
              */
@@ -362,39 +457,64 @@ const config: Config = {
             /**
              * Variant when a header is displayed.
              */
+            addVariant('site-header-none', 'html.site-header-none &');
             addVariant('site-header', 'body:has(#site-header:not(.mobile-only)) &');
-            addVariant('site-header-sections', 'body:has(#site-header:not(.mobile-only) > nav) &');
+            addVariant('site-header-sections', [
+                'body:has(#site-header:not(.mobile-only) #sections) &',
+                'body:has(.page-no-toc):has(#site-header:not(.mobile-only) #variants) &',
+            ]);
 
-            /**
-             * Variant for sidebar styles
-             */
-            addVariant('sidebar-default', 'html.sidebar-default &');
-            addVariant('sidebar-filled', 'html.sidebar-filled &');
-            addVariant('sidebar-list-default', 'html.sidebar-list-default &');
-            addVariant('sidebar-list-pill', 'html.sidebar-list-pill &');
-            addVariant('sidebar-list-line', 'html.sidebar-list-line &');
+            const customisationVariants = {
+                // Sidebar styles
+                sidebar: ['sidebar-default', 'sidebar-filled'],
 
-            /**
-             * Variant for tint colours
-             */
-            addVariant('tint', 'html.tint &');
-            addVariant('no-tint', 'html.no-tint &');
+                // List styles
+                list: ['sidebar-list-default', 'sidebar-list-pill', 'sidebar-list-line'],
 
-            /**
-             * Variant when the space is configured with straight corners.
-             */
-            addVariant('straight-corners', 'html.straight-corners &');
+                // Tint colours
+                tint: ['tint', 'no-tint'],
+
+                // Themes
+                theme: ['theme-clean', 'theme-muted', 'theme-bold', 'theme-gradient'],
+
+                // Corner styles
+                corner: ['straight-corners'],
+
+                // Link styles
+                links: ['links-default', 'links-accent'],
+            };
+
+            for (const [category, variants] of Object.entries(customisationVariants)) {
+                for (const variant of variants) {
+                    addVariant(variant, `html.${variant} &`);
+
+                    if (category === 'tint') {
+                        /* Because we check for a class on the `html` element, like `html.$variant`, we cannot easily chain customisation variants "the Tailwind way". 
+                        Basically, when you write `theme-clean:tint:`, you're creating a CSS selector like `html.theme-clean html.tint &`.
+                        We need the selector to apply to the same element, like `html.$variant.$otherVariant` instead.
+                        Instead of relying on Tailwind variant chaining, we manually create a few additional variants for often-used combinations like theme+tint. */
+                        for (const themeVariant of customisationVariants.theme) {
+                            addVariant(
+                                `${themeVariant}-${variant}`, // theme-clean-tint, theme-clean-no-tint, theme-muted-tint, ...
+                                `html.${variant}.${themeVariant} &` // html.theme-clean.tint, html.theme-clean.no-tint, ...
+                            );
+                        }
+                    }
+                }
+            }
 
             /**
              * Variant when the page contains a block that will be rendered in full-width mode.
              */
             addVariant('page-full-width', 'body:has(.page-full-width) &');
+            addVariant('page-default-width', 'body:has(.page-default-width) &');
 
             /**
              * Variant when the page is configured to hide the table of content.
              * `page.layout.tableOfContents` is set to false.
              */
             addVariant('page-no-toc', 'body:has(.page-no-toc) &');
+            addVariant('page-has-toc', 'body:has(.page-has-toc) &');
 
             /**
              * Variant when the page contains an OpenAPI block.

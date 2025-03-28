@@ -1,11 +1,11 @@
 'use client';
 
-import { ContentKitWebFrame } from '@gitbook/api';
+import type { ContentKitWebFrame } from '@gitbook/api';
 import React from 'react';
 
 import { useContentKitClientContext } from './context';
-import { ContentKitClientElementProps } from './types';
 import { resolveDynamicBinding } from './dynamic';
+import type { ContentKitClientElementProps } from './types';
 
 export function ElementWebframe(props: ContentKitClientElementProps<ContentKitWebFrame>) {
     const { element } = props;
@@ -14,8 +14,7 @@ export function ElementWebframe(props: ContentKitClientElementProps<ContentKitWe
     const renderer = useContentKitClientContext();
     const iframeRef = React.useRef<HTMLIFrameElement>(null);
     const [size, setSize] = React.useState<{
-        maxWidth?: number;
-        maxHeight?: number;
+        height?: number;
         aspectRatio?: number;
     }>({});
 
@@ -37,15 +36,15 @@ export function ElementWebframe(props: ContentKitClientElementProps<ContentKitWe
                     return;
                 }
 
-                iframeRef.current.contentWindow!.postMessage(
+                iframeRef.current.contentWindow?.postMessage(
                     message,
-                    `${target.protocol}//${target.host}`,
+                    `${target.protocol}//${target.host}`
                 );
             } else {
                 messagesQueueRef.current.push(message);
             }
         },
-        [renderer.security],
+        [renderer.security]
     );
 
     //
@@ -88,12 +87,11 @@ export function ElementWebframe(props: ContentKitClientElementProps<ContentKitWe
                         const height = parsed.height;
 
                         setSize({
-                            maxWidth: width,
                             aspectRatio: width / height,
-                            maxHeight: height,
+                            height: height,
                         });
                     }
-                } catch (err) {
+                } catch (_err) {
                     return;
                 }
             }
@@ -108,11 +106,25 @@ export function ElementWebframe(props: ContentKitClientElementProps<ContentKitWe
                         messagesQueueRef.current = [];
                         break;
                     case '@webframe.resize':
-                        setSize({
-                            maxWidth: Number(message.action.size.maxWidth),
-                            maxHeight: Number(message.action.size.maxHeight),
-                            aspectRatio: Number(message.action.size.aspectRatio),
-                        });
+                        setSize((size) => ({
+                            aspectRatio:
+                                typeof message.action.size.aspectRatio !== 'undefined'
+                                    ? Number(message.action.size.aspectRatio)
+                                    : size.aspectRatio,
+
+                            height: (() => {
+                                if (typeof message.action.size.height !== 'undefined') {
+                                    return Number(message.action.size.height);
+                                }
+
+                                // maxHeight was used prior to moving to height, maintain it for backward compatibility.
+                                if (typeof message.action.size.maxHeight !== 'undefined') {
+                                    return Number(message.action.size.maxHeight);
+                                }
+
+                                return size.height;
+                            })(),
+                        }));
                         break;
                     default:
                         renderer.update({
@@ -149,33 +161,27 @@ export function ElementWebframe(props: ContentKitClientElementProps<ContentKitWe
         return sendMessage({ state });
     }, [element.data, renderer.state, sendMessage]);
 
+    if (!mounted) {
+        return null;
+    }
+
+    const aspectRatio = size.aspectRatio || element.aspectRatio;
+
     return (
-        <div
-            className={`contentkit-webframe`}
+        <iframe
+            ref={iframeRef}
+            src={element.source.url}
+            title={element.source.url}
+            allowFullScreen
+            allow="clipboard-write"
+            className="contentkit-webframe"
             style={{
-                aspectRatio: size.aspectRatio || element.aspectRatio || undefined,
-                maxWidth: size.maxWidth || undefined,
-                maxHeight: size.maxHeight || undefined,
+                width: '100%',
+                maxWidth: '100%',
+                aspectRatio,
+                height: size.height ? Math.max(size.height, 32) : '100%',
+                border: 'none',
             }}
-        >
-            {mounted ? (
-                <iframe
-                    ref={iframeRef}
-                    src={element.source.url}
-                    allowFullScreen
-                    allow="clipboard-write"
-                    style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        bottom: 0,
-                        right: 0,
-                        width: '100%',
-                        height: '100%',
-                        border: 'none',
-                    }}
-                />
-            ) : null}
-        </div>
+        />
     );
 }

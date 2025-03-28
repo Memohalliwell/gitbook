@@ -1,5 +1,3 @@
-import { startSpan } from '@sentry/nextjs';
-
 export interface TraceSpan {
     setAttribute: (label: string, value: boolean | string | number) => void;
 }
@@ -16,40 +14,37 @@ interface TraceName {
  */
 export async function trace<T>(
     name: string | TraceName,
-    fn: (span: TraceSpan) => Promise<T>,
+    fn: (span: TraceSpan) => Promise<T>
 ): Promise<T> {
     const { operation, name: executionName } =
         typeof name === 'string' ? { operation: name, name: undefined } : name;
     const completeName = executionName ? `${operation}(${executionName})` : operation;
 
-    return await startSpan(
-        {
-            name: completeName,
-            op: operation,
+    const attributes: Record<string, boolean | string | number> = {};
+    const span: TraceSpan = {
+        setAttribute(label, value) {
+            attributes[label] = value;
         },
-        async (sentrySpan) => {
-            const attributes: Record<string, boolean | string | number> = {};
-            const span: TraceSpan = {
-                setAttribute(label, value) {
-                    attributes[label] = value;
-                    sentrySpan?.setAttribute(label, value);
-                },
-            };
+    };
 
-            let start = now();
-            try {
-                return await fn(span);
-            } catch (error) {
-                span.setAttribute('error', true);
-                throw error;
-            } finally {
-                if (process.env.SILENT !== 'true') {
-                    let end = now();
-                    console.log(`trace ${completeName} ${end - start}ms`, attributes);
-                }
-            }
-        },
-    );
+    const start = now();
+    let failed = false;
+    try {
+        return await fn(span);
+    } catch (error) {
+        span.setAttribute('error', true);
+        failed = true;
+        throw error;
+    } finally {
+        if (process.env.SILENT !== 'true' && process.env.NODE_ENV !== 'development') {
+            const end = now();
+            // biome-ignore lint/suspicious/noConsole: we want to log performance data
+            console.log(
+                `trace ${completeName} ${failed ? 'failed' : 'succeeded'} in ${end - start}ms`,
+                attributes
+            );
+        }
+    }
 }
 
 /**

@@ -1,0 +1,11 @@
+{
+    "extends": ["//"],
+    "tasks": {
+        "generate": {
+            "outputs": ["public"]
+        },
+        "typecheck": {
+            "dependsOn": ["^typecheck"]
+        }
+    }
+}

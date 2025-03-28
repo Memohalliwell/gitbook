@@ -1,6 +1,6 @@
-import { it, describe, expect } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
+import type { OpenAPIV3 } from '@gitbook/openapi-parser';
 import { getSchemaAlternatives } from './OpenAPISchema';
-import { OpenAPIV3 } from '@scalar/openapi-types';
 
 describe('getSchemaAlternatives', () => {
     it('should flatten oneOf', () => {
@@ -21,20 +21,17 @@ describe('getSchemaAlternatives', () => {
                         type: 'string',
                     },
                 ],
-            }),
+            })
         ).toEqual([
-            [
-                {
-                    type: 'number',
-                },
-                {
-                    type: 'boolean',
-                },
-                {
-                    type: 'string',
-                },
-            ],
-            undefined,
+            {
+                type: 'number',
+            },
+            {
+                type: 'boolean',
+            },
+            {
+                type: 'string',
+            },
         ]);
     });
 
@@ -56,24 +53,21 @@ describe('getSchemaAlternatives', () => {
                         type: 'string',
                     },
                 ],
-            }),
+            })
         ).toEqual([
-            [
-                {
-                    allOf: [
-                        {
-                            type: 'number',
-                        },
-                        {
-                            type: 'boolean',
-                        },
-                    ],
-                },
-                {
-                    type: 'string',
-                },
-            ],
-            undefined,
+            {
+                allOf: [
+                    {
+                        type: 'number',
+                    },
+                    {
+                        type: 'boolean',
+                    },
+                ],
+            },
+            {
+                type: 'string',
+            },
         ]);
     });
 
@@ -86,16 +80,13 @@ describe('getSchemaAlternatives', () => {
             ],
         };
 
-        a.anyOf!.push(a);
+        a.anyOf?.push(a);
 
         expect(getSchemaAlternatives(a)).toEqual([
-            [
-                {
-                    type: 'string',
-                },
-                a,
-            ],
-            undefined,
+            {
+                type: 'string',
+            },
+            a,
         ]);
     });
 });

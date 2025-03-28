@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { asyncMutexFunction, race } from './async';
+import { race } from './async';
 import { flushWaitUntil } from './waitUntil';
 
 describe('race', () => {
@@ -14,7 +14,7 @@ describe('race', () => {
             async ([value, timeout]) => {
                 await new Promise((resolve) => setTimeout(resolve, timeout));
                 return value;
-            },
+            }
         );
 
         expect(result).toBe(1);
@@ -31,7 +31,7 @@ describe('race', () => {
             async ([value, timeout]) => {
                 await new Promise((resolve) => setTimeout(resolve, timeout));
                 return value;
-            },
+            }
         );
 
         expect(result).toBe(2);
@@ -53,7 +53,7 @@ describe('race', () => {
                 }
 
                 return value;
-            },
+            }
         );
 
         expect(result).toBe(3);
@@ -77,7 +77,7 @@ describe('race', () => {
                     });
                 });
                 return value;
-            },
+            }
         );
 
         expect(result).toBe(1);
@@ -97,7 +97,7 @@ describe('race', () => {
             },
             {
                 timeout: 5,
-            },
+            }
         );
 
         expect(result).toBe(null);
@@ -136,8 +136,8 @@ describe('race', () => {
                     },
                     {
                         signal: abort.signal,
-                    },
-                ),
+                    }
+                )
             ).rejects.toThrow('The operation was aborted.');
 
             expect(abortted).toBe(3);
@@ -169,7 +169,7 @@ describe('race', () => {
                     blockFallback: async () => {
                         return 4;
                     },
-                },
+                }
             );
 
             expect(result).toBe(4);
@@ -200,7 +200,7 @@ describe('race', () => {
                     blockFallback: async () => {
                         return 4;
                     },
-                },
+                }
             );
 
             expect(result).toBe(2);
@@ -232,7 +232,7 @@ describe('race', () => {
                         await new Promise((resolve) => setTimeout(resolve, 30));
                         return 4;
                     },
-                },
+                }
             );
 
             expect(result).toBe(4);
@@ -268,8 +268,8 @@ describe('race', () => {
                             throw new Error('Fallback error');
                         },
                         fallbackOnNull: true,
-                    },
-                ),
+                    }
+                )
             ).rejects.toThrow('Fallback error');
 
             const pendings = await flushWaitUntil();
@@ -302,8 +302,8 @@ describe('race', () => {
                             throw new Error('Fallback error');
                         },
                         fallbackOnNull: true,
-                    },
-                ),
+                    }
+                )
             ).rejects.toThrow('Fallback error');
 
             const pendings = await flushWaitUntil();
@@ -335,7 +335,7 @@ describe('race', () => {
                         throw new Error('Fallback error');
                     },
                     fallbackOnNull: true,
-                },
+                }
             );
             expect(result).toBe('done');
 
@@ -371,97 +371,12 @@ describe('race', () => {
                             throw new Error('Fallback error');
                         },
                         fallbackOnNull: false,
-                    },
-                ),
+                    }
+                )
             ).rejects.toThrow('Fallback error');
 
             const pendings = await flushWaitUntil();
             expect(pendings).toHaveLength(0);
-        });
-    });
-});
-
-describe('asyncMutexFunction', () => {
-    describe('self', () => {
-        it('should run only once', async () => {
-            let running = 0;
-
-            const fn = async () => {
-                running += 1;
-
-                await new Promise((resolve) => setTimeout(resolve, 10));
-            };
-
-            const mutexFn = asyncMutexFunction();
-
-            await Promise.all([
-                mutexFn(fn),
-                mutexFn(fn),
-                mutexFn(fn),
-                mutexFn(fn),
-                mutexFn(fn),
-                mutexFn(fn),
-            ]);
-
-            expect(running).toBe(1);
-        });
-    });
-
-    describe('runBlocking', () => {
-        it('should run only one function at a time', async () => {
-            let running = 0;
-            let maxRunning = 0;
-
-            const fn = async () => {
-                running += 1;
-                maxRunning = Math.max(running, maxRunning);
-
-                await new Promise((resolve) => setTimeout(resolve, 10));
-
-                running -= 1;
-            };
-
-            const mutexFn = asyncMutexFunction();
-
-            await Promise.all([
-                mutexFn.runBlocking(fn),
-                mutexFn.runBlocking(fn),
-                mutexFn.runBlocking(fn),
-                mutexFn.runBlocking(fn),
-                mutexFn.runBlocking(fn),
-                mutexFn.runBlocking(fn),
-            ]);
-
-            expect(maxRunning).toBe(1);
-        });
-    });
-
-    describe('runAfter', () => {
-        it('should run only one function at a time', async () => {
-            let running = 0;
-            let maxRunning = 0;
-
-            const fn = async () => {
-                running += 1;
-                maxRunning = Math.max(running, maxRunning);
-
-                await new Promise((resolve) => setTimeout(resolve, 10));
-
-                running -= 1;
-            };
-
-            const mutexFn = asyncMutexFunction();
-
-            await Promise.all([
-                mutexFn.runAfter(fn),
-                mutexFn.runAfter(fn),
-                mutexFn.runAfter(fn),
-                mutexFn.runAfter(fn),
-                mutexFn.runAfter(fn),
-                mutexFn.runAfter(fn),
-            ]);
-
-            expect(maxRunning).toBe(1);
         });
     });
 });

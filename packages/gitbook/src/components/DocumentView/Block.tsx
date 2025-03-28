@@ -1,19 +1,19 @@
-import { DocumentBlock, JSONDocument } from '@gitbook/api';
+import type { DocumentBlock, JSONDocument } from '@gitbook/api';
 import React from 'react';
 
 import {
-    SkeletonParagraph,
-    SkeletonHeading,
     SkeletonCard,
+    SkeletonHeading,
     SkeletonImage,
+    SkeletonParagraph,
     SkeletonSmall,
 } from '@/components/primitives';
-import { ClassValue } from '@/lib/tailwind';
+import type { ClassValue } from '@/lib/tailwind';
 
 import { BlockContentRef } from './BlockContentRef';
 import { CodeBlock } from './CodeBlock';
 import { Divider } from './Divider';
-import { DocumentContextProps } from './DocumentView';
+import type { DocumentContextProps } from './DocumentView';
 import { Drawing } from './Drawing';
 import { Embed } from './Embed';
 import { Expandable } from './Expandable';
@@ -25,7 +25,7 @@ import { IntegrationBlock } from './Integration';
 import { List } from './List';
 import { ListItem } from './ListItem';
 import { BlockMath } from './Math';
-import { OpenAPI } from './OpenAPI';
+import { OpenAPIOperation, OpenAPISchemas } from './OpenAPI';
 import { Paragraph } from './Paragraph';
 import { Quote } from './Quote';
 import { ReusableContent } from './ReusableContent';
@@ -47,7 +47,7 @@ export interface BlockProps<Block extends DocumentBlock> extends DocumentContext
 /**
  * Alternative to `assertNever` that returns `null` instead of throwing an error.
  */
-function nullIfNever(value: never): null {
+function nullIfNever(_value: never): null {
     return null;
 }
 
@@ -81,7 +81,10 @@ export function Block<T extends DocumentBlock>(props: BlockProps<T>) {
             case 'table':
                 return <Table {...props} block={block} />;
             case 'swagger':
-                return <OpenAPI {...props} block={block} />;
+            case 'openapi-operation':
+                return <OpenAPIOperation {...props} block={block} />;
+            case 'openapi-schemas':
+                return <OpenAPISchemas {...props} block={block} />;
             case 'embed':
                 return <Embed {...props} block={block} />;
             case 'blockquote':
@@ -96,10 +99,6 @@ export function Block<T extends DocumentBlock>(props: BlockProps<T>) {
                 return <Drawing {...props} block={block} />;
             case 'content-ref':
                 return <BlockContentRef {...props} block={block} />;
-            case 'image':
-            case 'code-line':
-            case 'tabs-item':
-                throw new Error('Blocks should be directly rendered by parent');
             case 'integration':
                 return <IntegrationBlock {...props} block={block} />;
             case 'reusable-content':
@@ -108,6 +107,10 @@ export function Block<T extends DocumentBlock>(props: BlockProps<T>) {
                 return <Stepper {...props} block={block} />;
             case 'stepper-step':
                 return <StepperStep {...props} block={block} />;
+            case 'image':
+            case 'code-line':
+            case 'tabs-item':
+                throw new Error(`Blocks (${block.type}) should be directly rendered by parent`);
             default:
                 return nullIfNever(block);
         }
@@ -149,10 +152,13 @@ export function BlockSkeleton(props: { block: DocumentBlock; style: ClassValue }
         case 'code':
         case 'hint':
         case 'tabs':
+        case 'stepper-step':
             return <SkeletonParagraph id={id} style={style} />;
         case 'expandable':
         case 'table':
         case 'swagger':
+        case 'openapi-operation':
+        case 'openapi-schemas':
         case 'math':
         case 'divider':
         case 'content-ref':
@@ -167,8 +173,7 @@ export function BlockSkeleton(props: { block: DocumentBlock; style: ClassValue }
         case 'image':
         case 'code-line':
         case 'tabs-item':
-        case 'stepper-step':
-            throw new Error('Blocks should be directly rendered by parent');
+            throw new Error(`Blocks (${block.type}) should be directly rendered by parent`);
         default:
             return nullIfNever(block);
     }

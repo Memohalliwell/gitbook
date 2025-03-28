@@ -1,51 +1,46 @@
 'use client';
 
-import type { SiteSection } from '@gitbook/api';
 import { Icon, type IconName } from '@gitbook/icons';
 import * as NavigationMenu from '@radix-ui/react-navigation-menu';
 import React from 'react';
 
 import { Link } from '@/components/primitives';
-import { SectionsList } from '@/lib/api';
 import { tcls } from '@/lib/tailwind';
-
 import { SectionIcon } from './SectionIcon';
+import type { ClientSiteSection, ClientSiteSections } from './encodeClientSiteSections';
 
 const VIEWPORT_ITEM_WIDTH = 240; /* width of the tile (w-60) */
 const MIN_ITEMS_FOR_COLS = 4; /* number of items to switch to 2 columns */
 /**
  * A set of navigational links representing site sections for multi-section sites
  */
-export function SiteSectionTabs(props: { sections: SectionsList }) {
+export function SiteSectionTabs(props: { sections: ClientSiteSections }) {
     const {
         sections: { list: sectionsAndGroups, current: currentSection },
     } = props;
     const [value, setValue] = React.useState<string | null>();
     const [offset, setOffset] = React.useState<number | null>(null);
-    const scrollableViewRef = React.useRef<HTMLDivElement>(null);
+    const menuContainerRef = React.useRef<HTMLDivElement>(null);
 
-    const onNodeUpdate = (
-        trigger: HTMLButtonElement | null,
-        itemValue: string,
-        size: number = 0,
-    ) => {
+    const onNodeUpdate = (trigger: HTMLButtonElement | null, itemValue: string, size = 0) => {
+        const padding = 16;
+        const margin = -12; // Offsetting the menu container's negative margin
         const windowWidth = document.documentElement.clientWidth;
+        const windowBuffer = 16; // constrain to within the window with some buffer on the left and right we don't want the menu to enter
+        const viewportWidth =
+            size < MIN_ITEMS_FOR_COLS
+                ? VIEWPORT_ITEM_WIDTH + padding
+                : VIEWPORT_ITEM_WIDTH * 2 + padding;
+        const minOffset = 0 - (menuContainerRef.current?.offsetLeft ?? 0) + margin;
+        const maxOffset = minOffset + windowWidth - viewportWidth;
+
         if (windowWidth < 768) {
             // if the screen is small don't offset the menu
-            setOffset(0);
+            setOffset(minOffset + windowBuffer);
         } else if (trigger && value === itemValue) {
-            const padding = 16;
-            const viewportWidth =
-                size < MIN_ITEMS_FOR_COLS
-                    ? VIEWPORT_ITEM_WIDTH + padding
-                    : VIEWPORT_ITEM_WIDTH * 2 + padding;
-            const scrollLeft = scrollableViewRef.current?.scrollLeft ?? 0;
-            const triggerOffset = trigger.offsetLeft - scrollLeft; // offset of the trigger from the left edge including scrolling
-            const bufferLeft = 2; // offset the menu viewport should not pass on the left side of window
-            const bufferRight = windowWidth - (16 + viewportWidth); // offset the menu viewport should not pass on the right side of the window
+            const position = minOffset + trigger?.getBoundingClientRect().left;
             setOffset(
-                // constrain to within the window with some buffer on the left and right we don't want the menu to enter
-                Math.min(bufferRight, Math.max(bufferLeft, Math.round(triggerOffset))),
+                Math.min(maxOffset - windowBuffer, Math.max(minOffset + windowBuffer, position))
             );
         } else if (!value) {
             setOffset(null);
@@ -55,21 +50,23 @@ export function SiteSectionTabs(props: { sections: SectionsList }) {
     return sectionsAndGroups.length > 0 ? (
         <NavigationMenu.Root
             aria-label="Sections"
+            id="sections"
             onValueChange={setValue}
-            className="w-full relative z-10 flex flex-nowrap items-center max-w-screen-2xl mx-auto page-full-width:max-w-full"
+            className="z-10 flex w-full flex-nowrap items-center"
         >
             <div
-                ref={scrollableViewRef}
-                className="w-full hide-scroll overflow-x-scroll overflow-y-hidden pb-4 -mb-4" /* Positive padding / negative margin allows the navigation menu indicator to show in a scroll view */
+                ref={menuContainerRef}
+                className="-mx-3"
+                // className="-mb-4 pb-4" /* Positive padding / negative margin allows the navigation menu indicator to show in a scroll view */
             >
-                <NavigationMenu.List className="center m-0 flex list-none bg-transparent px-1 sm:px-3 md:px-5 gap-2">
+                <NavigationMenu.List className="center m-0 flex list-none gap-2 bg-transparent">
                     {sectionsAndGroups.map((sectionOrGroup) => {
                         const { id, title, icon } = sectionOrGroup;
                         const isGroup = sectionOrGroup.object === 'site-section-group';
                         const isActiveGroup =
                             isGroup &&
                             Boolean(
-                                sectionOrGroup.sections.find((s) => s.id === currentSection.id),
+                                sectionOrGroup.sections.find((s) => s.id === currentSection.id)
                             );
                         const isActive = isActiveGroup || id === currentSection.id;
                         return (
@@ -82,7 +79,7 @@ export function SiteSectionTabs(props: { sections: SectionsList }) {
                                                     onNodeUpdate(
                                                         node,
                                                         id,
-                                                        sectionOrGroup.sections.length,
+                                                        sectionOrGroup.sections.length
                                                     )
                                                 }
                                                 asChild
@@ -93,11 +90,9 @@ export function SiteSectionTabs(props: { sections: SectionsList }) {
                                                     icon={icon as IconName}
                                                 />
                                             </NavigationMenu.Trigger>
-                                            <NavigationMenu.Content className="absolute z-20 left-0 top-0 w-full md:w-max data-[motion=from-end]:motion-safe:animate-enterFromRight data-[motion=from-start]:motion-safe:animate-enterFromLeft data-[motion=to-end]:motion-safe:animate-exitToRight data-[motion=to-start]:motion-safe:animate-exitToLeft">
+                                            <NavigationMenu.Content className="absolute top-0 left-0 z-20 w-full data-[motion=from-end]:motion-safe:animate-enterFromRight data-[motion=from-start]:motion-safe:animate-enterFromLeft data-[motion=to-end]:motion-safe:animate-exitToRight data-[motion=to-start]:motion-safe:animate-exitToLeft md:w-max">
                                                 <SectionGroupTileList
-                                                    sections={
-                                                        sectionOrGroup.sections as SiteSection[]
-                                                    }
+                                                    sections={sectionOrGroup.sections}
                                                     currentSection={currentSection}
                                                 />
                                             </NavigationMenu.Content>
@@ -106,7 +101,7 @@ export function SiteSectionTabs(props: { sections: SectionsList }) {
                                 ) : (
                                     <NavigationMenu.Link asChild>
                                         <SectionTab
-                                            url={sectionOrGroup.urls.published ?? ''}
+                                            url={sectionOrGroup.url}
                                             isActive={isActive}
                                             title={title}
                                             icon={icon ? (icon as IconName) : undefined}
@@ -117,10 +112,10 @@ export function SiteSectionTabs(props: { sections: SectionsList }) {
                         );
                     })}
                     <NavigationMenu.Indicator
-                        className="top-full z-0 flex h-3 items-end justify-center duration-150 motion-safe:transition-[width,_transform] data-[state=hidden]:motion-safe:animate-fadeOut data-[state=visible]:motion-safe:animate-fadeIn"
+                        className="fixed top-full z-50 flex h-3 items-end justify-center duration-150 motion-safe:transition-[width,_transform] data-[state=hidden]:motion-safe:animate-fadeOut data-[state=visible]:motion-safe:animate-fadeIn"
                         aria-hidden
                     >
-                        <div className="bg-tint shadow-1xs shadow-dark/1 dark:shadow-dark/4 relative top-[70%] size-3 rotate-[225deg] rounded-tl-sm" />
+                        <div className="relative top-1/2 size-3 rotate-45 rounded-tl-sm border-tint-subtle border-t border-l bg-tint-base" />
                     </NavigationMenu.Indicator>
                 </NavigationMenu.List>
             </div>
@@ -128,11 +123,11 @@ export function SiteSectionTabs(props: { sections: SectionsList }) {
                 className="absolute top-full flex transition-transform duration-200 ease-in-out"
                 style={{
                     display: offset === null ? 'none' : undefined,
-                    transform: offset ? `translateX(${offset}px)` : undefined,
+                    transform: offset ? `translateX(${offset}px) translateZ(0)` : 'translateZ(0)', // TranslateZ is needed to force a stacking context, fixing a rendering bug on Safari
                 }}
             >
                 <NavigationMenu.Viewport
-                    className="bg-tint rounded straight-corners:rounded-none shadow-1xs shadow-dark/1 dark:shadow-dark/4 relative mt-3 ml-4 md:mx-0 w-[calc(100vw_-_2rem)] md:w-[var(--radix-navigation-menu-viewport-width)] h-[var(--radix-navigation-menu-viewport-height)] origin-[top_center] overflow-hidden motion-safe:transition-[width,_height,_transform] duration-250 data-[state=closed]:duration-150 data-[state=closed]:motion-safe:animate-scaleOut data-[state=open]:motion-safe:animate-scaleIn"
+                    className="relative mt-3 h-[var(--radix-navigation-menu-viewport-height)] w-[calc(100vw_-_2rem)] origin-[top_center] overflow-hidden rounded-lg straight-corners:rounded-sm bg-tint-base shadow-lg shadow-tint-10/6 ring-1 ring-tint-subtle duration-250 data-[state=closed]:duration-150 motion-safe:transition-[width,_height,_transform] data-[state=closed]:motion-safe:animate-scaleOut data-[state=open]:motion-safe:animate-scaleIn md:mx-0 md:w-[var(--radix-navigation-menu-viewport-width)] dark:shadow-tint-1/6"
                     style={{
                         translate:
                             undefined /* don't move this to a Tailwind class as Radix renders viewport incorrectly for a few frames */,
@@ -148,7 +143,7 @@ export function SiteSectionTabs(props: { sections: SectionsList }) {
  */
 const SectionTab = React.forwardRef(function SectionTab(
     props: { isActive: boolean; title: string; icon?: IconName; url: string },
-    ref: React.Ref<HTMLAnchorElement>,
+    ref: React.Ref<HTMLAnchorElement>
 ) {
     const { isActive, title, icon, url, ...rest } = props;
     return (
@@ -156,14 +151,14 @@ const SectionTab = React.forwardRef(function SectionTab(
             ref={ref}
             {...rest}
             className={tcls(
-                'relative group flex select-none items-center justify-between rounded straight-corners:rounded-none px-3 py-1 my-2',
+                'group relative my-2 flex select-none items-center justify-between rounded straight-corners:rounded-none px-3 py-1',
                 isActive
                     ? 'text-primary-subtle'
-                    : 'text-tint hover:bg-tint-hover hover:text-tint-strong',
+                    : 'text-tint hover:bg-tint-hover hover:text-tint-strong'
             )}
             href={url}
         >
-            <span className="flex gap-2 items-center w-full truncate">
+            <span className="flex w-full items-center gap-2 truncate">
                 {icon ? <SectionIcon isActive={isActive} icon={icon} /> : null}
                 {title}
             </span>
@@ -177,7 +172,7 @@ const SectionTab = React.forwardRef(function SectionTab(
  */
 const SectionGroupTab = React.forwardRef(function SectionGroupTab(
     props: { isActive: boolean; title: string; icon?: IconName },
-    ref: React.Ref<HTMLButtonElement>,
+    ref: React.Ref<HTMLButtonElement>
 ) {
     const { isActive, title, icon, ...rest } = props;
     return (
@@ -185,13 +180,13 @@ const SectionGroupTab = React.forwardRef(function SectionGroupTab(
             ref={ref}
             {...rest}
             className={tcls(
-                'relative group flex select-none items-center justify-between rounded straight-corners:rounded-none transition-colors px-3 py-1 my-2',
+                'group relative my-2 flex select-none items-center justify-between rounded straight-corners:rounded-none px-3 py-1 transition-colors',
                 isActive
                     ? 'text-primary-subtle'
-                    : 'text-tint hover:bg-tint-hover hover:text-tint-strong',
+                    : 'text-tint hover:bg-tint-hover hover:text-tint-strong'
             )}
         >
-            <span className="flex gap-2 items-center w-full truncate">
+            <span className="flex w-full items-center gap-2 truncate">
                 {icon ? <SectionIcon isActive={isActive} icon={icon as IconName} /> : null}
                 {title}
             </span>
@@ -199,7 +194,7 @@ const SectionGroupTab = React.forwardRef(function SectionGroupTab(
             <Icon
                 aria-hidden
                 icon="chevron-down"
-                className="shrink-0 size-3 opacity-6 ms-1 transition-all group-data-[state=open]:rotate-180"
+                className="ms-1 size-3 shrink-0 opacity-6 transition-all group-data-[state=open]:rotate-180"
             />
         </button>
     );
@@ -210,20 +205,23 @@ const SectionGroupTab = React.forwardRef(function SectionGroupTab(
  */
 function ActiveTabIndicator() {
     return (
-        <span className="inset-x-3 -bottom-2 h-0.5 absolute bg-primary-9 contrast-more:bg-primary-11" />
+        <span className="-bottom-2 absolute inset-x-3 h-0.5 bg-primary-9 contrast-more:bg-primary-11" />
     );
 }
 
 /**
  * A list of section tiles grouped in the dropdown for a section group
  */
-function SectionGroupTileList(props: { sections: SiteSection[]; currentSection: SiteSection }) {
+function SectionGroupTileList(props: {
+    sections: ClientSiteSection[];
+    currentSection: ClientSiteSection;
+}) {
     const { sections, currentSection } = props;
     return (
         <ul
             className={tcls(
-                'grid w-full md:w-max p-2 sm:grid-cols-1',
-                sections.length < MIN_ITEMS_FOR_COLS ? 'md:grid-cols-1' : 'md:grid-cols-2',
+                'grid w-full gap-1 p-2 sm:grid-cols-1 md:w-max',
+                sections.length < MIN_ITEMS_FOR_COLS ? 'md:grid-cols-1' : 'md:grid-cols-2'
             )}
         >
             {sections.map((section) => (
@@ -240,25 +238,31 @@ function SectionGroupTileList(props: { sections: SiteSection[]; currentSection: 
 /**
  * A section tile shown in the dropdown for a section group
  */
-function SectionGroupTile(props: { section: SiteSection; isActive: boolean }) {
+function SectionGroupTile(props: { section: ClientSiteSection; isActive: boolean }) {
     const { section, isActive } = props;
-    const { urls, icon, title } = section;
+    const { url, icon, title } = section;
     return (
         <li className="flex w-full md:w-60">
             <Link
-                href={urls.published ?? ''}
+                href={url}
                 className={tcls(
-                    'flex flex-col p-3 gap-2 rounded w-full min-h-12 select-none transition-colors hover:bg-tint-hover',
-                    isActive
-                        ? 'text-primary hover:text-primary-strong focus:text-primary-strong'
-                        : 'text-tint hover:text-tint-strong focus:text-tint-strong',
+                    'flex w-full select-none flex-col gap-1 rounded straight-corners:rounded-none px-3 py-2 transition-colors hover:bg-tint-hover',
+                    isActive ? 'text-primary' : 'text-tint-strong'
                 )}
             >
-                <div className="flex gap-2 items-center w-full font-medium light:text-dark dark:text-light">
-                    {icon ? <SectionIcon isActive={false} icon={icon as IconName} /> : null}
-                    <span className="truncate min-w-0">{title}</span>
+                <div className="flex w-full gap-2">
+                    {icon ? (
+                        <SectionIcon
+                            className="mt-[3px]"
+                            isActive={false}
+                            icon={icon as IconName}
+                        />
+                    ) : null}
+                    {title}
                 </div>
-                <p className="text-tint-subtle">{section.description}</p>
+                {section.description ? (
+                    <p className="text-tint-subtle">{section.description}</p>
+                ) : null}
             </Link>
         </li>
     );

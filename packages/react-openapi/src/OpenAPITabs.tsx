@@ -1,26 +1,26 @@
 'use client';
 
-import React, { useMemo } from 'react';
-import { Key, Tab, TabList, TabPanel, Tabs, TabsProps } from 'react-aria-components';
-import { Markdown } from './Markdown';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { type Key, Tab, TabList, TabPanel, Tabs, type TabsProps } from 'react-aria-components';
+import { useEventCallback } from 'usehooks-ts';
+import { getOrCreateTabStoreByKey } from './useSyncedTabsGlobalState';
 
-export type Tab = {
+export type TabItem = {
     key: Key;
     label: string;
     body: React.ReactNode;
-    description?: string;
+    footer?: React.ReactNode;
 };
 
 type OpenAPITabsContextData = {
-    items: Tab[];
-    selectedKey: Key;
-    setSelectedKey: (key: Key) => void;
+    items: TabItem[];
+    selectedTab: TabItem | null;
 };
 
-const OpenAPITabsContext = React.createContext<OpenAPITabsContextData | null>(null);
+const OpenAPITabsContext = createContext<OpenAPITabsContextData | null>(null);
 
 function useOpenAPITabsContext() {
-    const context = React.useContext(OpenAPITabsContext);
+    const context = useContext(OpenAPITabsContext);
     if (!context) {
         throw new Error('OpenAPITabsContext is missing');
     }
@@ -30,24 +30,69 @@ function useOpenAPITabsContext() {
 /**
  * The OpenAPI Tabs wrapper component.
  */
-export function OpenAPITabs(props: React.PropsWithChildren<TabsProps & { items: Tab[] }>) {
-    const { children, items } = props;
-    const [selectedKey, setSelectedKey] = React.useState(items[0].key);
-
-    const contextValue = { items, selectedKey, setSelectedKey };
-
+export function OpenAPITabs(
+    props: React.PropsWithChildren<TabsProps & { items: TabItem[]; stateKey?: string }>
+) {
+    const { children, items, stateKey } = props;
+    const [tabKey, setTabKey] = useState<Key | null>(() => {
+        if (stateKey && typeof window !== 'undefined') {
+            const store = getOrCreateTabStoreByKey(stateKey);
+            const tabKey = store.getState().tabKey;
+            if (tabKey) {
+                return tabKey;
+            }
+        }
+        return items[0]?.key ?? null;
+    });
+    const selectTab = useEventCallback((key: Key | null) => {
+        if (!key || key === tabKey) {
+            return;
+        }
+        const tab = items.find((item) => item.key === key);
+        if (!tab) {
+            return;
+        }
+        setTabKey(key);
+    });
+    const selectedTab = items.find((item) => item.key === tabKey) ?? items[0] ?? null;
+    const cancelDeferRef = useRef<(() => void) | null>(null);
+    useEffect(() => {
+        if (!stateKey) {
+            return undefined;
+        }
+        const store = getOrCreateTabStoreByKey(stateKey);
+        return store.subscribe((state) => {
+            cancelDeferRef.current?.();
+            cancelDeferRef.current = defer(() => selectTab(state.tabKey));
+        });
+    }, [stateKey, selectTab]);
+    useEffect(() => {
+        return () => cancelDeferRef.current?.();
+    }, []);
+    const contextValue = useMemo(() => ({ items, selectedTab }), [items, selectedTab]);
     return (
         <OpenAPITabsContext.Provider value={contextValue}>
             <Tabs
                 className="openapi-tabs"
-                onSelectionChange={setSelectedKey}
-                selectedKey={selectedKey}
+                onSelectionChange={(tabKey) => {
+                    selectTab(tabKey);
+                    if (stateKey) {
+                        const store = getOrCreateTabStoreByKey(stateKey);
+                        store.setState({ tabKey });
+                    }
+                }}
+                selectedKey={tabKey}
             >
                 {children}
             </Tabs>
         </OpenAPITabsContext.Provider>
     );
 }
+
+const defer = (fn: () => void) => {
+    const id = setTimeout(fn, 0);
+    return () => clearTimeout(id);
+};
 
 /**
  * The OpenAPI Tabs list component.
@@ -61,14 +106,14 @@ export function OpenAPITabsList() {
         <TabList className="openapi-tabs-list">
             {items.map((tab) => (
                 <Tab
+                    key={tab.key}
+                    id={tab.key}
                     style={({ isFocusVisible }) => ({
                         outline: isFocusVisible
                             ? '2px solid rgb(var(--primary-color-500)/0.4)'
                             : 'none',
                     })}
                     className="openapi-tabs-tab"
-                    key={`Tab-${tab.key}`}
-                    id={tab.key}
                 >
                     {tab.label}
                 </Tab>
@@ -83,23 +128,19 @@ export function OpenAPITabsList() {
  * It renders the content of the selected tab.
  */
 export function OpenAPITabsPanels() {
-    const { selectedKey, items } = useOpenAPITabsContext();
+    const { selectedTab } = useOpenAPITabsContext();
 
-    const tab = useMemo(() => items.find((tab) => tab.key === selectedKey), [items, selectedKey]);
-
-    if (!tab) {
+    if (!selectedTab) {
         return null;
     }
 
+    const key = selectedTab.key.toString();
+
     return (
-        <TabPanel
-            key={`TabPanel-${tab.key}`}
-            id={tab.key.toString()}
-            className="openapi-tabs-panel"
-        >
-            {tab.body}
-            {tab.description ? (
-                <Markdown source={tab.description} className="openapi-tabs-footer" />
+        <TabPanel id={key} className="openapi-tabs-panel">
+            <div className="openapi-tabs-body">{selectedTab.body}</div>
+            {selectedTab.footer ? (
+                <div className="openapi-tabs-footer">{selectedTab.footer}</div>
             ) : null}
         </TabPanel>
     );

@@ -1,11 +1,11 @@
-import { SiteInsightsAd } from '@gitbook/api';
-import * as React from 'react';
+import type { SiteInsightsAd } from '@gitbook/api';
+import type { GitBookBaseContext } from '@v2/lib/context';
+import { getResizedImageURL } from '@v2/lib/images';
 
-import { getResizedImageURL } from '@/lib/images';
 import { tcls } from '@/lib/tailwind';
 
-import { AdItem } from './types';
 import { Link } from '../primitives';
+import type { AdItem } from './types';
 
 /**
  * Classic rendering for an ad.
@@ -13,14 +13,20 @@ import { Link } from '../primitives';
 export async function AdClassicRendering({
     ad,
     insightsAd,
+    context,
 }: {
     ad: AdItem;
     insightsAd: SiteInsightsAd | null;
+    context: GitBookBaseContext;
 }) {
     const smallImgSrc =
-        'smallImage' in ad ? await getResizedImageURL(ad.smallImage, { width: 192, dpr: 2 }) : null;
+        'smallImage' in ad
+            ? await getResizedImageURL(context.imageResizer, ad.smallImage, { width: 192, dpr: 2 })
+            : null;
     const logoSrc =
-        'logo' in ad ? await getResizedImageURL(ad.logo, { width: 192 - 48, dpr: 2 }) : null;
+        'logo' in ad
+            ? await getResizedImageURL(context.imageResizer, ad.logo, { width: 192 - 48, dpr: 2 })
+            : null;
     return (
         <Link
             rel="sponsored noopener"
@@ -41,7 +47,7 @@ export async function AdClassicRendering({
                 'text-tint',
                 'hover:text-tint-strong',
                 'rounded-lg',
-                'p-4',
+                'p-4'
             )}
             href={ad.statlink}
         >

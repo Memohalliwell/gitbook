@@ -1,38 +1,37 @@
-import { ContentAPITokenPayload, CustomizationThemeMode, GitBookAPI } from '@gitbook/api';
-import { setTag, setContext } from '@sentry/nextjs';
+import { type ContentAPITokenPayload, CustomizationThemeMode, GitBookAPI } from '@gitbook/api';
+import { getURLLookupAlternatives, normalizeURL } from '@v2/lib/data';
 import assertNever from 'assert-never';
 import jwt from 'jsonwebtoken';
-import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies';
-import { NextResponse, NextRequest } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import hash from 'object-hash';
 
 import {
-    PublishedContentWithCache,
-    getPublishedContentByUrl,
+    DEFAULT_API_ENDPOINT,
+    type PublishedContentWithCache,
     api,
+    getPublishedContentByUrl,
+    getPublishedContentSite,
     getSpace,
-    getSpaceContentData,
     userAgent,
     withAPI,
-    DEFAULT_API_ENDPOINT,
-    getPublishedContentSite,
-    getSiteData,
-    validateSerializedCustomization,
 } from '@/lib/api';
 import { race } from '@/lib/async';
 import { buildVersion } from '@/lib/build';
-import { createContentSecurityPolicyNonce, getContentSecurityPolicy } from '@/lib/csp';
-import { getURLLookupAlternatives, normalizeURL, setMiddlewareHeader } from '@/lib/middleware';
+import { getContentSecurityPolicy } from '@/lib/csp';
+import { validateSerializedCustomization } from '@/lib/customization';
+import { setMiddlewareHeader } from '@/lib/middleware';
 import {
-    VisitorTokenLookup,
-    getVisitorAuthCookieName,
-    getVisitorAuthCookieValue,
+    type ResponseCookies,
+    type VisitorTokenLookup,
+    getResponseCookiesForVisitorAuth,
     getVisitorToken,
     normalizeVisitorAuthURL,
 } from '@/lib/visitor-token';
 
-import { joinPath } from './lib/paths';
-import { waitUntil } from './lib/waitUntil';
+import { joinPath, withLeadingSlash } from '@/lib/paths';
+import { getProxyModeBasePath } from '@/lib/proxy';
+import { MiddlewareHeaders } from '@v2/lib/middleware';
+import { addResponseCacheTag } from './lib/cache/response';
 
 export const config = {
     matcher:
@@ -69,21 +68,15 @@ type URLLookupMode =
      */
     | 'multi-id';
 
-export type LookupCookies = Record<
-    string,
-    {
-        value: string;
-        options?: Partial<ResponseCookie>;
-    }
->;
-
 export type LookupResult = PublishedContentWithCache & {
     /** API endpoint to use for the content post lookup */
     apiEndpoint?: string;
     /** Cookies to store on the response */
-    cookies?: LookupCookies;
+    cookies?: ResponseCookies;
     /** Visitor authentication token */
     visitorToken?: string;
+    /** URL of the site */
+    siteURL?: string;
 };
 
 /**
@@ -100,14 +93,6 @@ export type LookupResult = PublishedContentWithCache & {
 export async function middleware(request: NextRequest) {
     const { url, mode } = getInputURL(request);
     const isServerAction = request.headers.has('Next-Action');
-
-    setTag('url', url.toString());
-    setContext('request', {
-        method: request.method,
-        url: url.toString(),
-        rawRequestURL: request.url,
-        userAgent: userAgent(),
-    });
 
     // Redirect to normalize the URL
     const normalized = normalizeURL(url);
@@ -131,7 +116,7 @@ export async function middleware(request: NextRequest) {
             }),
             contextId: undefined,
         },
-        () => lookupSiteForURL(mode, request, inputURL),
+        () => lookupSiteForURL(mode, request, inputURL)
     );
     if ('error' in resolved) {
         return new NextResponse(resolved.error.message, {
@@ -143,7 +128,6 @@ export async function middleware(request: NextRequest) {
     }
 
     if ('redirect' in resolved) {
-        console.log(`redirecting (${resolved.target}) to ${resolved.redirect}`);
         return writeCookies(NextResponse.redirect(resolved.redirect), resolved.cookies);
     }
 
@@ -151,70 +135,19 @@ export async function middleware(request: NextRequest) {
     // The token is stored in a cookie that is set on the redirect response
     const normalizedVA = normalizeVisitorAuthURL(normalized);
     if (normalizedVA.toString() !== normalized.toString()) {
-        console.log(`redirecting to ${normalizedVA.toString()}`);
         return writeCookies(NextResponse.redirect(normalizedVA.toString()), resolved.cookies);
     }
 
-    setTag('space', resolved.space);
-    setContext('content', {
-        space: resolved.space,
-        changeRequest: resolved.changeRequest,
-        revision: resolved.revision,
-        ...('site' in resolved ? { site: resolved.site, siteSpace: resolved.siteSpace } : {}),
-    });
-
     // Because of how Next will encode, we need to encode ourselves the pathname before rewriting to it.
-    const rewritePathname = normalizePathname(encodePathname(resolved.pathname));
-
-    console.log(`${request.method} (${resolved.space}) ${rewritePathname}`);
+    const rewritePathname = withLeadingSlash(encodePathname(resolved.pathname));
 
     // Resolution might have changed the API endpoint
     apiEndpoint = resolved.apiEndpoint ?? apiEndpoint;
 
     const contextId = 'site' in resolved ? resolved.contextId : undefined;
-    const nonce = createContentSecurityPolicyNonce();
-    const csp = await withAPI(
-        {
-            client: new GitBookAPI({
-                endpoint: apiEndpoint,
-                authToken: resolved.apiToken,
-                userAgent: userAgent(),
-            }),
-            contextId,
-        },
-        async () => {
-            const [siteData] = await Promise.all([
-                'site' in resolved
-                    ? getSiteData({
-                          organizationId: resolved.organization,
-                          siteId: resolved.site,
-                          siteSectionId: resolved.siteSection,
-                          siteSpaceId: resolved.siteSpace,
-                          siteShareKey: resolved.shareKey,
-                      })
-                    : null,
-                // Start fetching everything as soon as possible, but do not block the middleware on it
-                // the cache will handle concurrent calls
-                waitUntil(
-                    getSpaceContentData(
-                        {
-                            spaceId: resolved.space,
-                            changeRequestId: resolved.changeRequest,
-                            revisionId: resolved.revision,
-                        },
-                        'site' in resolved ? resolved.shareKey : undefined,
-                    ),
-                ),
-            ]);
-
-            const scripts = siteData?.scripts ?? [];
-            return getContentSecurityPolicy(scripts, nonce);
-        },
-    );
+    const csp = getContentSecurityPolicy();
 
     const headers = new Headers(request.headers);
-    // https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy
-    headers.set('x-nonce', nonce);
     headers.set('content-security-policy', csp);
     // Pass a x-forwarded-host and origin to ensure Next doesn't block server actions when proxied
     headers.set('x-forwarded-host', inputURL.host);
@@ -227,8 +160,11 @@ export async function middleware(request: NextRequest) {
     headers.set('x-gitbook-origin-basepath', originBasePath);
     headers.set(
         'x-gitbook-basepath',
-        mode === 'proxy' ? originBasePath : joinPath(originBasePath, resolved.basePath),
+        mode === 'proxy'
+            ? getProxyModeBasePath(inputURL, resolved)
+            : joinPath(originBasePath, resolved.basePath)
     );
+    headers.set('x-gitbook-site-basepath', joinPath(originBasePath, resolved.siteBasePath));
     headers.set('x-gitbook-content-space', resolved.space);
     if ('site' in resolved) {
         headers.set('x-gitbook-content-organization', resolved.organization);
@@ -242,6 +178,9 @@ export async function middleware(request: NextRequest) {
         if (resolved.shareKey) {
             headers.set('x-gitbook-content-site-share-key', resolved.shareKey);
         }
+
+        // For server actions that use v2 code
+        headers.set(MiddlewareHeaders.SiteURLData, JSON.stringify(resolved));
     }
 
     // For tests, we make it possible to enable search indexation
@@ -262,20 +201,16 @@ export async function middleware(request: NextRequest) {
 
     const customization = url.searchParams.get('customization');
     if (customization && validateSerializedCustomization(customization)) {
-        headers.set('x-gitbook-customization', customization);
+        headers.set(MiddlewareHeaders.Customization, customization);
     }
 
     const theme = url.searchParams.get('theme');
     if (theme === CustomizationThemeMode.Dark || theme === CustomizationThemeMode.Light) {
-        headers.set('x-gitbook-theme', theme);
+        headers.set(MiddlewareHeaders.Theme, theme);
     }
 
     if (apiEndpoint) {
         headers.set('x-gitbook-api', apiEndpoint);
-    }
-
-    if (resolved.visitorToken) {
-        headers.set('x-gitbook-visitor-token', resolved.visitorToken);
     }
 
     const target = new URL(joinPath('/middleware', rewritePathname), request.nextUrl.toString());
@@ -290,7 +225,7 @@ export async function middleware(request: NextRequest) {
         // A long-standing bug in Nextjs causes modifying cookies in Server Actions to refresh the page and cause root rerenders.
         // https://github.com/vercel/next.js/issues/50163
         // We don't set the cookies if we're in a server action.
-        isServerAction ? undefined : resolved.cookies,
+        isServerAction ? undefined : resolved.cookies
     );
 
     // Add method so Cloudflare can use it for caching
@@ -314,8 +249,8 @@ export async function middleware(request: NextRequest) {
 
         // When the request is authenticated, we don't want to cache the response on the server.
         // Allow storing so that revalidation still happens with server.
-        if (!resolved.visitorToken) {
-            return 'no-cache';
+        if (resolved.visitorToken) {
+            return 'no-cache, no-store';
         }
 
         if (typeof resolved.cacheMaxAge === 'number') {
@@ -332,10 +267,8 @@ export async function middleware(request: NextRequest) {
         }
     }
 
-    if (resolved.cacheTags && resolved.cacheTags.length > 0) {
-        const headerCacheTag = resolved.cacheTags.join(',');
-        setMiddlewareHeader(response, 'cache-tag', headerCacheTag);
-        setMiddlewareHeader(response, 'x-gitbook-cache-tag', headerCacheTag);
+    if (resolved.cacheTags) {
+        addResponseCacheTag(...resolved.cacheTags);
     }
 
     return response;
@@ -381,7 +314,10 @@ function getInputURL(request: NextRequest): {
     // to determine the site to serve.
     const xGitbookSite = request.headers.get('x-gitbook-site-url');
     if (xGitbookSite) {
-        mode = 'proxy';
+        return {
+            mode: 'proxy',
+            url: new URL(xGitbookSite),
+        };
     }
 
     return { url, mode };
@@ -390,7 +326,7 @@ function getInputURL(request: NextRequest): {
 async function lookupSiteForURL(
     mode: URLLookupMode,
     request: NextRequest,
-    url: URL,
+    url: URL
 ): Promise<LookupResult> {
     switch (mode) {
         case 'single': {
@@ -420,7 +356,7 @@ async function lookupSiteInSingleMode(url: URL): Promise<LookupResult> {
     const spaceId = process.env.GITBOOK_SPACE_ID;
     if (!spaceId) {
         throw new Error(
-            `Missing GITBOOK_SPACE_ID environment variable. It should be passed when using GITBOOK_MODE=single.`,
+            'Missing GITBOOK_SPACE_ID environment variable. It should be passed when using GITBOOK_MODE=single.'
         );
     }
 
@@ -428,7 +364,7 @@ async function lookupSiteInSingleMode(url: URL): Promise<LookupResult> {
     const apiToken = getDefaultAPIToken(apiCtx.client.endpoint);
     if (!apiToken) {
         throw new Error(
-            `Missing GITBOOK_TOKEN environment variable. It should be passed when using GITBOOK_MODE=single.`,
+            'Missing GITBOOK_TOKEN environment variable. It should be passed when using GITBOOK_MODE=single.'
         );
     }
 
@@ -436,6 +372,7 @@ async function lookupSiteInSingleMode(url: URL): Promise<LookupResult> {
         kind: 'space',
         space: spaceId,
         basePath: '',
+        siteBasePath: '',
         pathname: url.pathname,
         apiToken,
         visitorToken: undefined,
@@ -447,17 +384,7 @@ async function lookupSiteInSingleMode(url: URL): Promise<LookupResult> {
  * When proxying a site on a different base URL.
  */
 async function lookupSiteInProxy(request: NextRequest, url: URL): Promise<LookupResult> {
-    const rawSiteUrl = request.headers.get('x-gitbook-site-url');
-    if (!rawSiteUrl) {
-        throw new Error(
-            `Missing x-gitbook-site-url header. It should be passed when using GITBOOK_MODE=proxy.`,
-        );
-    }
-
-    const siteUrl = new URL(rawSiteUrl);
-    siteUrl.pathname = joinPath(siteUrl.pathname, url.pathname);
-
-    return await lookupSiteInMultiMode(request, siteUrl);
+    return await lookupSiteInMultiMode(request, url);
 }
 
 /**
@@ -465,7 +392,10 @@ async function lookupSiteInProxy(request: NextRequest, url: URL): Promise<Lookup
  * When serving multi spaces based on the current URL.
  */
 async function lookupSiteInMultiMode(request: NextRequest, url: URL): Promise<LookupResult> {
-    const visitorAuthToken = getVisitorToken(request, url);
+    const visitorAuthToken = getVisitorToken({
+        cookies: request.cookies.getAll(),
+        url,
+    });
     const lookup = await lookupSiteByAPI(url, visitorAuthToken);
     return {
         ...lookup,
@@ -487,7 +417,7 @@ async function lookupSiteInMultiMode(request: NextRequest, url: URL): Promise<Lo
  */
 async function lookupSiteOrSpaceInMultiIdMode(
     request: NextRequest,
-    url: URL,
+    url: URL
 ): Promise<LookupResult> {
     const basePathParts: string[] = [];
     const pathSegments = url.pathname.slice(1).split('/');
@@ -522,7 +452,7 @@ async function lookupSiteOrSpaceInMultiIdMode(
         return {
             error: {
                 code: 400,
-                message: `Missing site or space ID in the path`,
+                message: 'Missing site or space ID in the path',
             },
         };
     }
@@ -550,7 +480,7 @@ async function lookupSiteOrSpaceInMultiIdMode(
         return {
             error: {
                 code: 400,
-                message: `Missing token query parameter`,
+                message: 'Missing token query parameter',
             },
         };
     }
@@ -579,7 +509,7 @@ async function lookupSiteOrSpaceInMultiIdMode(
     // (the cache is not dependend on the auth token, so it could leak data)
     if (source.kind === 'space') {
         await withAPI({ client: gitbookAPI, contextId }, () =>
-            getSpace.revalidate(source.id, undefined),
+            getSpace.revalidate(source.id, undefined)
         );
     }
 
@@ -591,12 +521,13 @@ async function lookupSiteOrSpaceInMultiIdMode(
                 organizationId: decoded.organization,
                 siteId: source.id,
                 siteShareKey: undefined,
-            }),
+            })
         );
     }
 
-    const cookies: LookupCookies = {
-        [cookieName]: {
+    const cookies: ResponseCookies = [
+        {
+            name: cookieName,
             value: encodeGitBookTokenCookie(source.id, apiToken, apiEndpoint),
             options: {
                 httpOnly: true,
@@ -605,7 +536,7 @@ async function lookupSiteOrSpaceInMultiIdMode(
                 sameSite: process.env.NODE_ENV === 'production' ? 'none' : undefined,
             },
         },
-    };
+    ];
 
     // Get rid of the token from the URL
     if (url.searchParams.has(AUTH_TOKEN_QUERY) || url.searchParams.has(API_ENDPOINT_QUERY)) {
@@ -620,16 +551,20 @@ async function lookupSiteOrSpaceInMultiIdMode(
         };
     }
 
+    const basePath = withLeadingSlash(basePathParts.join('/'));
     return {
         // In multi-id mode, complete is always considered true because there is no URL to resolve
         ...(decoded.kind === 'site' ? { ...decoded, complete: true } : decoded),
         changeRequest: changeRequestId,
         revision: revisionId,
-        basePath: normalizePathname(basePathParts.join('/')),
-        pathname: normalizePathname(pathSegments.join('/')),
+        siteBasePath: basePath,
+        basePath,
+        pathname: withLeadingSlash(pathSegments.join('/')),
         apiToken,
         apiEndpoint,
+        contextId,
         cookies,
+        canonicalUrl: url.toString(),
     };
 }
 
@@ -647,7 +582,7 @@ async function lookupSiteInMultiPathMode(request: NextRequest, url: URL): Promis
         return {
             error: {
                 code: 404,
-                message: `favicon.ico, robots.txt, sitemap.xml should be accessed under a content`,
+                message: 'favicon.ico, robots.txt, sitemap.xml should be accessed under a content',
             },
         };
     }
@@ -656,7 +591,7 @@ async function lookupSiteInMultiPathMode(request: NextRequest, url: URL): Promis
         return {
             error: {
                 code: 404,
-                message: `Invalid URL in the path, should start with a domain`,
+                message: 'Invalid URL in the path, should start with a domain',
             },
         };
     }
@@ -667,14 +602,17 @@ async function lookupSiteInMultiPathMode(request: NextRequest, url: URL): Promis
         return {
             error: {
                 code: 404,
-                message: `Invalid URL in the path`,
+                message: 'Invalid URL in the path',
             },
         };
     }
     const target = new URL(targetStr);
     target.search = url.search;
 
-    const visitorAuthToken = getVisitorToken(request, target);
+    const visitorAuthToken = getVisitorToken({
+        cookies: request.cookies.getAll(),
+        url: target,
+    });
 
     const lookup = await lookupSiteByAPI(target, visitorAuthToken);
     if ('error' in lookup) {
@@ -690,8 +628,8 @@ async function lookupSiteInMultiPathMode(request: NextRequest, url: URL): Promis
             return {
                 target: 'content',
                 redirect: new URL(
-                    `/` + redirect.hostname + redirect.pathname + redirect.search,
-                    url,
+                    `/${redirect.hostname}${redirect.pathname}${redirect.search}`,
+                    url
                 ).toString(),
             };
         }
@@ -701,6 +639,7 @@ async function lookupSiteInMultiPathMode(request: NextRequest, url: URL): Promis
 
     return {
         ...lookup,
+        siteBasePath: joinPath(target.host, lookup.siteBasePath),
         basePath: joinPath(target.host, lookup.basePath),
         ...('basePath' in lookup && visitorAuthToken
             ? getLookupResultForVisitorAuth(lookup.basePath, visitorAuthToken)
@@ -715,14 +654,10 @@ async function lookupSiteInMultiPathMode(request: NextRequest, url: URL): Promis
  */
 async function lookupSiteByAPI(
     lookupURL: URL,
-    visitorTokenLookup: VisitorTokenLookup,
+    visitorTokenLookup: VisitorTokenLookup
 ): Promise<LookupResult> {
     const url = stripURLSearch(lookupURL);
     const lookup = getURLLookupAlternatives(url);
-
-    console.log(
-        `lookup content for url "${url.toString()}", with ${lookup.urls.length} alternatives`,
-    );
 
     // When the visitor auth token is pulled from the cookie, set redirectOnError when calling getPublishedContentByUrl to allow
     // redirecting when the token is invalid as we could be dealing with stale token stored in the cookie.
@@ -736,7 +671,7 @@ async function lookupSiteByAPI(
             redirectOnError || undefined,
             {
                 signal,
-            },
+            }
         );
 
         if ('error' in data) {
@@ -764,8 +699,8 @@ async function lookupSiteByAPI(
                                 'location',
                                 joinPath(
                                     redirect.searchParams.get('location') ?? '',
-                                    alternative.extraPath,
-                                ),
+                                    alternative.extraPath
+                                )
                             );
                             data.redirect = redirect.toString();
                         }
@@ -791,6 +726,7 @@ async function lookupSiteByAPI(
                 space: data.space,
                 changeRequest,
                 revision: data.revision ?? lookup.revision,
+                siteBasePath: data.siteBasePath,
                 basePath: joinPath(data.basePath, lookup.basePath ?? ''),
                 pathname: joinPath(data.pathname, alternative.extraPath),
                 apiToken: data.apiToken,
@@ -814,14 +750,23 @@ async function lookupSiteByAPI(
         return null;
     });
 
-    return (
-        result ?? {
-            error: {
-                code: 404,
-                message: `No content found`,
-            },
+    if (result) {
+        if ('site' in result) {
+            return {
+                ...result,
+                siteURL: `${lookupURL.origin}${result.basePath}`,
+            };
         }
-    );
+
+        return result;
+    }
+
+    return {
+        error: {
+            code: 404,
+            message: 'No content found',
+        },
+    };
 }
 
 /**
@@ -830,35 +775,13 @@ async function lookupSiteByAPI(
  */
 function getLookupResultForVisitorAuth(
     basePath: string,
-    visitorTokenLookup: VisitorTokenLookup,
+    visitorTokenLookup: VisitorTokenLookup
 ): Partial<LookupResult> {
     return {
         // No caching for content served with visitor auth
         cacheMaxAge: undefined,
         cacheTags: [],
-        cookies: {
-            /**
-             * If the visitor token has been retrieve from the URL, or if its a VA cookie and the basePath is the same, set it
-             * as a cookie on the response.
-             *
-             * Note that we do not re-store the gitbook-visitor-cookie in another cookie, to maintain a single source of truth.
-             */
-            ...(visitorTokenLookup?.source === 'url' ||
-            (visitorTokenLookup?.source === 'visitor-auth-cookie' &&
-                visitorTokenLookup.basePath === basePath)
-                ? {
-                      [getVisitorAuthCookieName(basePath)]: {
-                          value: getVisitorAuthCookieValue(basePath, visitorTokenLookup.token),
-                          options: {
-                              httpOnly: true,
-                              sameSite: process.env.NODE_ENV === 'production' ? 'none' : undefined,
-                              secure: process.env.NODE_ENV === 'production',
-                              maxAge: 7 * 24 * 60 * 60,
-                          },
-                      },
-                  }
-                : {}),
-        },
+        cookies: getResponseCookiesForVisitorAuth(basePath, visitorTokenLookup),
     };
 }
 
@@ -892,7 +815,7 @@ function stripBasePath(pathname: string, basePath: string): string {
 
     pathname = pathname.slice(basePath.length);
     if (!pathname.startsWith('/')) {
-        pathname = '/' + pathname;
+        pathname = `/${pathname}`;
     }
 
     return pathname;
@@ -902,15 +825,6 @@ function stripURLBasePath(url: URL, basePath: string): URL {
     const stripped = new URL(url.toString());
     stripped.pathname = stripBasePath(stripped.pathname, basePath);
     return stripped;
-}
-
-/** Normalize a pathname to make it start with a slash */
-function normalizePathname(pathname: string): string {
-    if (!pathname.startsWith('/')) {
-        pathname = '/' + pathname;
-    }
-
-    return pathname;
 }
 
 function stripURLSearch(url: URL): URL {
@@ -925,7 +839,7 @@ function encodePathname(pathname: string): string {
 
 function decodeGitBookTokenCookie(
     sourceId: string,
-    cookie: string | undefined,
+    cookie: string | undefined
 ): { apiToken: string; apiEndpoint: string | undefined } | undefined {
     if (!cookie) {
         return;
@@ -939,7 +853,7 @@ function decodeGitBookTokenCookie(
                 apiEndpoint: typeof parsed.e === 'string' ? parsed.e : undefined,
             };
         }
-    } catch (error) {
+    } catch (_error) {
         // ignore
     }
 }
@@ -947,23 +861,14 @@ function decodeGitBookTokenCookie(
 function encodeGitBookTokenCookie(
     spaceId: string,
     token: string,
-    apiEndpoint: string | undefined,
+    apiEndpoint: string | undefined
 ): string {
     return JSON.stringify({ s: spaceId, t: token, e: apiEndpoint });
 }
 
-function writeCookies<R extends NextResponse>(
-    response: R,
-    cookies: Record<
-        string,
-        {
-            value: string;
-            options?: Partial<ResponseCookie>;
-        }
-    > = {},
-): R {
-    Object.entries(cookies).forEach(([key, { value, options }]) => {
-        response.cookies.set(key, value, options);
+function writeCookies<R extends NextResponse>(response: R, cookies: ResponseCookies = []): R {
+    cookies.forEach((cookie) => {
+        response.cookies.set(cookie.name, cookie.value, cookie.options);
     });
 
     return response;

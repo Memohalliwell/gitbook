@@ -1,25 +1,23 @@
 'use client';
 
-import { captureException } from '@sentry/nextjs';
+import { readStreamableValue } from 'ai/rsc';
 import assertNever from 'assert-never';
 import React from 'react';
 
 import { t, useLanguage } from '@/intl/client';
-import { iterateStreamResponse } from '@/lib/actions';
-import { SiteContentPointer } from '@/lib/api';
 import { tcls } from '@/lib/tailwind';
 
+import { useTrackEvent } from '../Insights';
+import { Loading } from '../primitives';
 import { SearchPageResultItem } from './SearchPageResultItem';
 import { SearchQuestionResultItem } from './SearchQuestionResultItem';
 import { SearchSectionResultItem } from './SearchSectionResultItem';
 import {
-    OrderedComputedResult,
-    searchSiteSpaceContent,
+    type OrderedComputedResult,
     searchAllSiteContent,
+    searchSiteSpaceContent,
     streamRecommendedQuestions,
 } from './server-actions';
-import { useTrackEvent } from '../Insights';
-import { Loading } from '../primitives';
 
 export interface SearchResultsRef {
     moveUp(): void;
@@ -48,15 +46,13 @@ export const SearchResults = React.forwardRef(function SearchResults(
     props: {
         children?: React.ReactNode;
         query: string;
-        revisionId: string;
         global: boolean;
         withAsk: boolean;
-        pointer: SiteContentPointer;
         onSwitchToAsk: () => void;
     },
-    ref: React.Ref<SearchResultsRef>,
+    ref: React.Ref<SearchResultsRef>
 ) {
-    const { children, query, pointer, revisionId, withAsk, global, onSwitchToAsk } = props;
+    const { children, query, withAsk, global, onSwitchToAsk } = props;
 
     const language = useLanguage();
     const trackEvent = useTrackEvent();
@@ -81,7 +77,8 @@ export const SearchResults = React.forwardRef(function SearchResults(
 
             let cancelled = false;
 
-            setResultsState({ results: [], fetching: true });
+            // Silently fetch the recommended questions, instead of showing a spinner
+            setResultsState({ results: [], fetching: false });
 
             // We currently have a bug where the same question can be returned multiple times.
             // This is a workaround to avoid that.
@@ -93,10 +90,13 @@ export const SearchResults = React.forwardRef(function SearchResults(
                     return;
                 }
 
-                const response = streamRecommendedQuestions(pointer.organizationId, pointer.siteId);
-                const stream = iterateStreamResponse(response);
+                const response = await streamRecommendedQuestions();
+                for await (const entry of readStreamableValue(response.stream)) {
+                    if (!entry) {
+                        continue;
+                    }
 
-                for await (const { question } of stream) {
+                    const { question } = entry;
                     if (questions.has(question)) {
                         continue;
                     }
@@ -119,43 +119,36 @@ export const SearchResults = React.forwardRef(function SearchResults(
                 cancelled = true;
                 clearTimeout(timeout);
             };
-        } else {
-            setResultsState((prev) => ({ results: prev.results, fetching: true }));
-            let cancelled = false;
-            const timeout = setTimeout(async () => {
-                const results = await (global
-                    ? searchAllSiteContent(query, pointer)
-                    : searchSiteSpaceContent(query, pointer, revisionId));
-
-                if (cancelled) {
-                    return;
-                }
-
-                if (!results) {
-                    captureException(
-                        new Error(
-                            `corrupt-cache: ${global ? 'searchAllSiteContent' : 'searchSiteSpaceContent'} is ${results}`,
-                        ),
-                        { extra: { results } },
-                    );
-                    setResultsState({ results: [], fetching: false });
-                    return;
-                }
-
-                setResultsState({ results, fetching: false });
-
-                trackEvent({
-                    type: 'search_type_query',
-                    query,
-                });
-            }, 350);
-
-            return () => {
-                cancelled = true;
-                clearTimeout(timeout);
-            };
         }
-    }, [query, global, pointer, revisionId, withAsk, trackEvent]);
+        setResultsState((prev) => ({ results: prev.results, fetching: true }));
+        let cancelled = false;
+        const timeout = setTimeout(async () => {
+            const results = await (global
+                ? searchAllSiteContent(query)
+                : searchSiteSpaceContent(query));
+
+            if (cancelled) {
+                return;
+            }
+
+            if (!results) {
+                setResultsState({ results: [], fetching: false });
+                return;
+            }
+
+            setResultsState({ results, fetching: false });
+
+            trackEvent({
+                type: 'search_type_query',
+                query,
+            });
+        }, 350);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timeout);
+        };
+    }, [query, global, withAsk, trackEvent]);
 
     const results: ResultType[] = React.useMemo(() => {
         if (!withAsk) {
@@ -196,7 +189,7 @@ export const SearchResults = React.forwardRef(function SearchResults(
                 return Math.max(Math.min(prev + delta, results.length - 1), 0);
             });
         },
-        [results],
+        [results]
     );
 
     const select = React.useCallback(() => {
@@ -218,7 +211,7 @@ export const SearchResults = React.forwardRef(function SearchResults(
             },
             select,
         }),
-        [moveBy, select],
+        [moveBy, select]
     );
 
     if (resultsState.fetching) {

@@ -1,12 +1,16 @@
-import { DocumentBlockCode, DocumentBlockCodeLine, DocumentInlineAnnotation } from '@gitbook/api';
+import type {
+    DocumentBlockCode,
+    DocumentBlockCodeLine,
+    DocumentInlineAnnotation,
+} from '@gitbook/api';
 import {
-    createdBundledHighlighter,
-    ThemedToken,
+    type ThemedToken,
     createCssVariablesTheme,
     createSingletonShorthands,
+    createdBundledHighlighter,
 } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
-import { BundledLanguage, bundledLanguages } from 'shiki/langs';
+import { type BundledLanguage, bundledLanguages } from 'shiki/langs';
 
 import { plainHighlight } from './plain-highlight';
 
@@ -31,15 +35,12 @@ export type RenderedInline = {
 
 const theme = createCssVariablesTheme();
 
-const highlighter = createSingletonShorthands(
+const { getSingletonHighlighter } = createSingletonShorthands(
     createdBundledHighlighter<any, any>({
         langs: bundledLanguages,
         themes: {},
-        engine: () =>
-            createJavaScriptRegexEngine({
-                forgiving: true,
-            }),
-    }),
+        engine: () => createJavaScriptRegexEngine({ forgiving: true, target: 'ES2018' }),
+    })
 );
 
 /**
@@ -48,7 +49,7 @@ const highlighter = createSingletonShorthands(
 export async function preloadHighlight(block: DocumentBlockCode) {
     const langName = getBlockLang(block);
     if (langName) {
-        await highlighter.getSingletonHighlighter({
+        await getSingletonHighlighter({
             langs: [langName],
             themes: [theme],
         });
@@ -60,7 +61,7 @@ export async function preloadHighlight(block: DocumentBlockCode) {
  */
 export async function highlight(
     block: DocumentBlockCode,
-    inlines: RenderedInline[],
+    inlines: RenderedInline[]
 ): Promise<HighlightLine[]> {
     const langName = getBlockLang(block);
     if (!langName) {
@@ -70,7 +71,12 @@ export async function highlight(
 
     const code = getPlainCodeBlock(block);
 
-    const lines = await highlighter.codeToTokensBase(code, {
+    const highlighter = await getSingletonHighlighter({
+        langs: [langName],
+        themes: [theme],
+    });
+
+    const lines = highlighter.codeToTokensBase(code, {
         lang: langName,
         theme,
         tokenizeMaxLineLength: 400,
@@ -128,12 +134,6 @@ function getLanguageForSyntax(syntax: string): BundledLanguage | null {
     // Normalize the syntax to lowercase.
     syntax = syntax.toLowerCase();
 
-    // Temporary disable highlighting for C/C++ code blocks
-    // @see https://github.com/shikijs/shiki/issues/893
-    if (syntax === 'cpp' || syntax === 'c') {
-        return null;
-    }
-
     // Check if the syntax is a bundled language.
     if (checkIsBundledLanguage(syntax)) {
         return syntax;
@@ -159,7 +159,7 @@ export function getInlines(block: DocumentBlockCode) {
 
 function matchTokenAndInlines(
     eat: () => PositionedToken | null,
-    allInlines: RenderedInline[],
+    allInlines: RenderedInline[]
 ): HighlightToken[] {
     const initialToken = eat();
     if (!initialToken) {
@@ -167,7 +167,7 @@ function matchTokenAndInlines(
     }
 
     const inlines = allInlines.filter(
-        ({ inline }) => inline.start >= initialToken.start && inline.start < initialToken.end,
+        ({ inline }) => inline.start >= initialToken.start && inline.start < initialToken.end
     );
     let token = initialToken;
     const result: HighlightToken[] = [];
@@ -191,7 +191,7 @@ function matchTokenAndInlines(
             });
         }
         if (!afterBefore) {
-            throw new Error(`expect afterBefore to not be empty`);
+            throw new Error('expect afterBefore to not be empty');
         }
 
         token = afterBefore;
@@ -206,14 +206,14 @@ function matchTokenAndInlines(
 
             const next = eat();
             if (!next) {
-                throw new Error(`expect token to not be empty`);
+                throw new Error('expect token to not be empty');
             }
             token = next;
         }
 
         const [inside, after] = splitPositionedTokenAt(token, inline.inline.end);
         if (!inside) {
-            throw new Error(`expect inside to not be empty`);
+            throw new Error('expect inside to not be empty');
         }
 
         children.push({
@@ -255,7 +255,7 @@ function getPlainCodeBlock(code: DocumentBlockCode, inlines?: InlineIndexed[]): 
 function getPlainCodeBlockLine(
     parent: DocumentBlockCodeLine | DocumentInlineAnnotation,
     index: number,
-    inlines?: InlineIndexed[],
+    inlines?: InlineIndexed[]
 ): string {
     let content = '';
 
@@ -283,7 +283,7 @@ function getPlainCodeBlockLine(
 function slicePositionedToken(
     token: PositionedToken,
     relativeStart: number,
-    relativeLength: number,
+    relativeLength: number
 ): PositionedToken {
     return {
         ...token,
@@ -295,7 +295,7 @@ function slicePositionedToken(
 
 function splitPositionedTokenAt(
     token: PositionedToken,
-    absoluteIndex: number,
+    absoluteIndex: number
 ): [PositionedToken | null, PositionedToken | null] {
     if (absoluteIndex < token.start || absoluteIndex > token.end) {
         throw new Error(`index (${absoluteIndex}) out of bound (${token.start}:${token.end})`);
@@ -305,7 +305,7 @@ function splitPositionedTokenAt(
     const after = slicePositionedToken(
         token,
         absoluteIndex - token.start,
-        token.end - absoluteIndex,
+        token.end - absoluteIndex
     );
 
     return [

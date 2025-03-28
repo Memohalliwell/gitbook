@@ -1,9 +1,9 @@
-import { DocumentBlock, JSONDocument } from '@gitbook/api';
+import type { DocumentBlock, JSONDocument } from '@gitbook/api';
 
-import { tcls, ClassValue } from '@/lib/tailwind';
+import { type ClassValue, tcls } from '@/lib/tailwind';
 
 import { Block } from './Block';
-import { DocumentContextProps } from './DocumentView';
+import type { DocumentContextProps } from './DocumentView';
 import { isBlockOffscreen } from './utils';
 
 /**
@@ -19,7 +19,7 @@ export function Blocks<TBlock extends DocumentBlock, Tag extends React.ElementTy
 
         /** Props to pass to the wrapper element */
         wrapperProps?: React.ComponentProps<Tag>;
-    },
+    }
 ) {
     const { tag: Tag = 'div', style, wrapperProps, ...blocksProps } = props;
 
@@ -42,43 +42,41 @@ type UnwrappedBlocksProps<TBlock extends DocumentBlock> = DocumentContextProps &
 
     /** Style passed to all blocks */
     blockStyle?: ClassValue;
+
+    /** True if all blocks should be considered offscreen */
+    isOffscreen?: boolean;
 };
 
 /**
  * Renders a list of blocks without a wrapper element.
  */
 export function UnwrappedBlocks<TBlock extends DocumentBlock>(props: UnwrappedBlocksProps<TBlock>) {
-    const { nodes, blockStyle, ...contextProps } = props;
+    const { nodes, blockStyle, isOffscreen: defaultIsOffscreen = false, ...contextProps } = props;
 
-    let isOffscreen = false;
+    let isOffscreen = defaultIsOffscreen;
+    return nodes.map((node, index) => {
+        isOffscreen =
+            isOffscreen ||
+            isBlockOffscreen({
+                document: props.document,
+                block: node,
+                ancestorBlocks: props.ancestorBlocks,
+            });
 
-    return (
-        <>
-            {nodes.map((node) => {
-                isOffscreen =
-                    isOffscreen ||
-                    isBlockOffscreen({
-                        document: props.document,
-                        block: node,
-                        ancestorBlocks: props.ancestorBlocks,
-                    });
-
-                return (
-                    <Block
-                        key={node.key}
-                        block={node}
-                        style={[
-                            'w-full mx-auto decoration-primary/6',
-                            node.data && 'fullWidth' in node.data && node.data.fullWidth
-                                ? 'max-w-screen-xl'
-                                : 'max-w-3xl',
-                            blockStyle,
-                        ]}
-                        isEstimatedOffscreen={isOffscreen}
-                        {...contextProps}
-                    />
-                );
-            })}
-        </>
-    );
+        return (
+            <Block
+                key={node.key || `${node.type}-${index}`}
+                block={node}
+                style={[
+                    'mx-auto w-full decoration-primary/6',
+                    node.data && 'fullWidth' in node.data && node.data.fullWidth
+                        ? 'max-w-screen-xl'
+                        : 'max-w-3xl',
+                    blockStyle,
+                ]}
+                isEstimatedOffscreen={isOffscreen}
+                {...contextProps}
+            />
+        );
+    });
 }

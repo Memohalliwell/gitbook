@@ -1,21 +1,20 @@
 'use client';
 
 import { Icon } from '@gitbook/icons';
+import { readStreamableValue } from 'ai/rsc';
 import React from 'react';
 
 import { Loading } from '@/components/primitives';
 import { useLanguage } from '@/intl/client';
 import { t } from '@/intl/translate';
-import { TranslationLanguage } from '@/intl/translations';
-import { iterateStreamResponse } from '@/lib/actions';
-import { SiteContentPointer } from '@/lib/api';
+import type { TranslationLanguage } from '@/intl/translations';
 import { tcls } from '@/lib/tailwind';
 
-import { AskAnswerResult, AskAnswerSource, streamAskQuestion } from './server-actions';
-import { useSearch, useSearchLink } from './useSearch';
 import { useTrackEvent } from '../Insights';
 import { Link } from '../primitives';
 import { useSearchAskContext } from './SearchAskContext';
+import { type AskAnswerResult, type AskAnswerSource, streamAskQuestion } from './server-actions';
+import { useSearch, useSearchLink } from './useSearch';
 
 export type SearchAskState =
     | {
@@ -32,14 +31,13 @@ export type SearchAskState =
 /**
  * Fetch and render the answers to a question.
  */
-export function SearchAskAnswer(props: { pointer: SiteContentPointer; query: string }) {
-    const { pointer, query } = props;
+export function SearchAskAnswer(props: { query: string }) {
+    const { query } = props;
 
     const language = useLanguage();
     const trackEvent = useTrackEvent();
     const [, setSearchState] = useSearch();
     const [askState, setAskState] = useSearchAskContext();
-    const { organizationId, siteId, siteSpaceId } = pointer;
 
     React.useEffect(() => {
         let cancelled = false;
@@ -52,19 +50,19 @@ export function SearchAskAnswer(props: { pointer: SiteContentPointer; query: str
                 query,
             });
 
-            const response = streamAskQuestion(organizationId, siteId, siteSpaceId ?? null, query);
-            const stream = iterateStreamResponse(response);
-
             // When we pass in "ask" mode, the query could still be updated by the client
             // we ensure that the query is up-to-date before starting the stream.
             setSearchState((prev) => (prev ? { ...prev, query, ask: true } : null));
 
-            for await (const chunk of stream) {
+            const { stream } = await streamAskQuestion({ question: query });
+            for await (const chunk of readStreamableValue(stream)) {
                 if (cancelled) {
                     return;
                 }
 
-                setAskState({ type: 'answer', answer: chunk });
+                if (chunk) {
+                    setAskState({ type: 'answer', answer: chunk });
+                }
             }
         })().catch(() => {
             if (cancelled) {
@@ -81,7 +79,7 @@ export function SearchAskAnswer(props: { pointer: SiteContentPointer; query: str
                 cancelled = true;
             }
         };
-    }, [organizationId, siteId, siteSpaceId, query, setAskState, setSearchState, trackEvent]);
+    }, [query, setAskState, setSearchState, trackEvent]);
 
     React.useEffect(() => {
         return () => {
@@ -117,7 +115,7 @@ export function SearchAskAnswer(props: { pointer: SiteContentPointer; query: str
 function TransitionAnswerBody(props: { answer: AskAnswerResult; placeholder: React.ReactNode }) {
     const { answer, placeholder } = props;
     const [display, setDisplay] = React.useState<AskAnswerResult | null>(null);
-    const [isPending, startTransition] = React.useTransition();
+    const [_isPending, startTransition] = React.useTransition();
 
     React.useEffect(() => {
         startTransition(() => {
@@ -180,7 +178,7 @@ function AnswerFollowupQuestions(props: { followupQuestions: string[] }) {
                         'straight-corners:rounded-none',
                         'text-tint',
                         'hover:bg-tint-hover',
-                        'focus-within:bg-tint-hover',
+                        'focus-within:bg-tint-hover'
                     )}
                     {...getSearchLinkProps({
                         query: question,
@@ -216,7 +214,7 @@ function AnswerSources(props: {
                 'py-4',
                 'px-4',
                 'border-t',
-                'border-subtle',
+                'border-subtle'
             )}
         >
             <span>
@@ -233,10 +231,11 @@ function AnswerSources(props: {
                             'items-center',
                             'text-tint',
                             'hover:underline',
-                            'focus-within:text-primary',
+                            'links-accent:decoration-[3px]',
+                            'links-accent:underline-offset-4',
+                            'focus-within:text-primary'
                         )}
                         href={source.href}
-                        prefetch={false}
                     >
                         <Icon
                             icon="arrow-up-right"

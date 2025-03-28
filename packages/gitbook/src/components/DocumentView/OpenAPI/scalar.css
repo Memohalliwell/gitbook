@@ -1,4 +1,4 @@
-@import '@scalar/api-client-react/style.css';
+@import "@scalar/api-client-react/style.css";
 
 .light .scalar-modal-layout,
 .light .scalar-app,
@@ -13,11 +13,7 @@
         var(--scalar-color-1),
         transparent calc(100% - 100% * 0.72)
     );
-    --scalar-color-3: color-mix(
-        in srgb,
-        var(--scalar-color-1),
-        transparent calc(100% - 100% * 0.4)
-    );
+    --scalar-color-3: color-mix(in srgb, var(--scalar-color-1), transparent calc(100% - 100% * 0.4));
     --scalar-color-accent: #007d9c;
 
     --scalar-background-1: rgb(var(--tint-1, 255 255 255));
@@ -74,11 +70,7 @@
         var(--scalar-color-1),
         transparent calc(100% - 100% * 0.64)
     );
-    --scalar-color-3: color-mix(
-        in srgb,
-        var(--scalar-color-1),
-        transparent calc(100% - 100% * 0.4)
-    );
+    --scalar-color-3: color-mix(in srgb, var(--scalar-color-1), transparent calc(100% - 100% * 0.4));
     --scalar-color-accent: #50b7e0;
 
     --scalar-background-1: rgb(var(--tint-1, 22 22 22));
@@ -115,8 +107,8 @@
     --scalar-button-1-hover: #e7e7e7;
 
     --scalar-shadow-1: 0 1px 3px 0 rgb(0, 0, 0, 0.1);
-    --scalar-shadow-2: rgba(15, 15, 15, 0.2) 0px 3px 6px, rgba(15, 15, 15, 0.4) 0px 9px 24px,
-        0 0 0 1px rgba(255, 255, 255, 0.1);
+    --scalar-shadow-2: rgba(15, 15, 15, 0.2) 0px 3px 6px, rgba(15, 15, 15, 0.4) 0px 9px 24px, 0 0 0
+        1px rgba(255, 255, 255, 0.1);
 
     --scalar-selection-background: rgba(96, 175, 255, 0.4);
     --scalar-selection-color: rgb(var(--tint-12, 255 255 255));
@@ -272,14 +264,18 @@
     gap: 6px;
 }
 .scalar-activate-button {
-    @apply flex gap-1.5 items-center;
+    @apply flex gap-2 items-center;
     @apply bg-primary-solid text-contrast-primary-solid hover:bg-primary-solid-hover hover:text-contrast-primary-solid-hover contrast-more:ring-1 rounded-md straight-corners:rounded-none place-self-start;
     @apply ring-1 ring-tint hover:ring-tint-hover;
     @apply shadow-sm shadow-tint dark:shadow-tint-1 hover:shadow-md active:shadow-none;
     @apply contrast-more:ring-tint-12 contrast-more:hover:ring-2 contrast-more:hover:ring-tint-12;
     @apply hover:scale-105 active:scale-100 transition-all;
     @apply grow-0 shrink-0 truncate;
-    @apply text-sm px-2.5 py-1;
+    @apply text-[13px] px-2 py-0.5 font-mono font-medium [word-spacing:-2px];
+}
+
+.scalar-activate-button svg {
+    @apply size-2.5;
 }
 
 .scalar-app-loading {

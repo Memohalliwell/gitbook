@@ -2,51 +2,72 @@ import {
     CustomizationCorners,
     CustomizationHeaderPreset,
     CustomizationIconsStyle,
-    type CustomizationSettings,
     CustomizationSidebarBackgroundStyle,
     CustomizationSidebarListStyle,
+    CustomizationThemeMode,
     type CustomizationThemedColor,
     type CustomizationTint,
     type SiteCustomizationSettings,
 } from '@gitbook/api';
-import { IconsProvider, IconStyle } from '@gitbook/icons';
-import assertNever from 'assert-never';
-
-import { fontNotoColorEmoji, fonts, ibmPlexMono } from '@/fonts';
-import { getSpaceLanguage } from '@/intl/server';
-import { getStaticFileURL } from '@/lib/assets';
 import {
+    type ColorScaleOptions,
+    DEFAULT_HINT_DANGER_COLOR,
+    DEFAULT_HINT_INFO_COLOR,
+    DEFAULT_HINT_SUCCESS_COLOR,
+    DEFAULT_HINT_WARNING_COLOR,
+    DEFAULT_TINT_COLOR,
     colorContrast,
     colorScale,
-    type ColorScaleOptions,
-    DARK_BASE,
-    DEFAULT_TINT_COLOR,
     hexToRgb,
-    LIGHT_BASE,
-    shadesOfColor,
-} from '@/lib/colors';
+} from '@gitbook/colors';
+import { IconStyle, IconsProvider } from '@gitbook/icons';
+import * as ReactDOM from 'react-dom';
+
+import { getFontData } from '@/fonts';
+import { fontNotoColorEmoji, ibmPlexMono } from '@/fonts/default';
+import { getSpaceLanguage } from '@/intl/server';
+import { getAssetURL } from '@/lib/assets';
 import { tcls } from '@/lib/tailwind';
 
 import { ClientContexts } from './ClientContexts';
 
 import '@gitbook/icons/style.css';
 import './globals.css';
+import { GITBOOK_FONTS_URL, GITBOOK_ICONS_TOKEN, GITBOOK_ICONS_URL } from '@v2/lib/env';
+import { AnnouncementDismissedScript } from '../Announcement';
 
 /**
  * Layout shared between the content and the PDF renderer.
  * It takes care of setting the theme and the language.
  */
 export async function CustomizationRootLayout(props: {
-    customization: SiteCustomizationSettings | CustomizationSettings;
+    forcedTheme?: CustomizationThemeMode | null;
+    customization: SiteCustomizationSettings;
     children: React.ReactNode;
 }) {
-    const { customization, children } = props;
+    const { customization, forcedTheme, children } = props;
 
-    const headerTheme = generateHeaderTheme(customization);
     const language = getSpaceLanguage(customization);
     const tintColor = getTintColor(customization);
     const mixColor = getTintMixColor(customization.styling.primaryColor, tintColor);
     const sidebarStyles = getSidebarStyles(customization);
+    const { infoColor, successColor, warningColor, dangerColor } = getSemanticColors(customization);
+    const fontData = getFontData(customization.styling.font);
+
+    // Preconnect and preload custom fonts if needed
+    if (fontData.type === 'custom') {
+        ReactDOM.preconnect(GITBOOK_FONTS_URL);
+        fontData.preloadSources
+            .flatMap((face) => face.sources)
+            .forEach(({ url, format }) => {
+                ReactDOM.preload(url, {
+                    as: 'font',
+                    crossOrigin: 'anonymous',
+                    fetchPriority: 'high',
+                    type: format ? `font/${format}` : undefined,
+                });
+            });
+    }
 
     return (
         <html
@@ -54,20 +75,39 @@ export async function CustomizationRootLayout(props: {
             lang={customization.internationalization.locale}
             className={tcls(
                 customization.header.preset === CustomizationHeaderPreset.None
-                    ? null
+                    ? 'site-header-none'
                     : 'scroll-pt-[76px]', // Take the sticky header in consideration for the scrolling
                 customization.styling.corners === CustomizationCorners.Straight
                     ? ' straight-corners'
                     : '',
+                'theme' in customization.styling && `theme-${customization.styling.theme}`,
                 tintColor ? ' tint' : 'no-tint',
-                sidebarStyles.background && ` sidebar-${sidebarStyles.background}`,
-                sidebarStyles.list && ` sidebar-list-${sidebarStyles.list}`,
+                sidebarStyles.background && `sidebar-${sidebarStyles.background}`,
+                sidebarStyles.list && `sidebar-list-${sidebarStyles.list}`,
+                'links' in customization.styling && `links-${customization.styling.links}`,
+                fontNotoColorEmoji.variable,
+                ibmPlexMono.variable,
+                fontData.type === 'default' ? fontData.variable : 'font-custom',
+
+                // Set the dark/light class statically to avoid flashing and make it work when JS is disabled
+                (forcedTheme ?? customization.themes.default) === CustomizationThemeMode.Dark
+                    ? 'dark'
+                    : ''
             )}
         >
             <head>
                 {customization.privacyPolicy.url ? (
                     <link rel="privacy-policy" href={customization.privacyPolicy.url} />
                 ) : null}
+
+                {/* Inject custom font @font-face rules */}
+                {fontData.type === 'custom' ? <style>{fontData.fontFaceRules}</style> : null}
+
+                {/* Inject a script to detect if the announcmeent banner has been dismissed */}
+                {'announcement' in customization && customization.announcement?.enabled ? (
+                    <AnnouncementDismissedScript />
+                ) : null}
+
                 <style
                     nonce={
                         //Since I can't get the nonce to work for inline styles, we need to allow unsafe-inline
@@ -79,8 +119,21 @@ export async function CustomizationRootLayout(props: {
                         ${generateColorVariable('tint', tintColor ? tintColor.light : DEFAULT_TINT_COLOR, { mix: mixColor && { color: mixColor.color.light, ratio: mixColor.ratio.light } })}
                         ${generateColorVariable('neutral', DEFAULT_TINT_COLOR)}
 
-                        --header-background: ${hexToRgb(headerTheme.backgroundColor.light)};
-                        --header-link: ${hexToRgb(headerTheme.linkColor.light)};
+                        --header-background: ${
+                            /** If the site still has a (deprecated) custom header link or background set, we use that.
+                             * These values are no longer supported in the Customiser, and will eventually be unsupported in the front-end. */
+                            hexToRgb(
+                                customization.header.backgroundColor?.light ??
+                                    tintColor?.light ??
+                                    customization.styling.primaryColor.light
+                            )
+                        };
+                        --header-link: ${hexToRgb(customization.header.linkColor?.light ?? colorContrast(tintColor?.light ?? customization.styling.primaryColor.light))};
+
+                        ${generateColorVariable('info', infoColor.light)}
+                        ${generateColorVariable('warning', warningColor.light)}
+                        ${generateColorVariable('danger', dangerColor.light)}
+                        ${generateColorVariable('success', successColor.light)}
                     }
 
                     .dark {
@@ -88,26 +141,32 @@ export async function CustomizationRootLayout(props: {
                         ${generateColorVariable('tint', tintColor ? tintColor.dark : DEFAULT_TINT_COLOR, { darkMode: true, mix: mixColor && { color: mixColor?.color.dark, ratio: mixColor.ratio.dark } })}
                         ${generateColorVariable('neutral', DEFAULT_TINT_COLOR, { darkMode: true })}
 
-                        --header-background: ${hexToRgb(headerTheme.backgroundColor.dark)};
-                        --header-link: ${hexToRgb(headerTheme.linkColor.dark)};   
+                        --header-background: ${hexToRgb(customization.header.backgroundColor?.dark ?? tintColor?.dark ?? customization.styling.primaryColor.dark)};
+                        --header-link: ${hexToRgb(customization.header.linkColor?.dark ?? colorContrast(tintColor?.dark ?? customization.styling.primaryColor.dark))};
+
+                        ${generateColorVariable('info', infoColor.dark, { darkMode: true })}
+                        ${generateColorVariable('warning', warningColor.dark, { darkMode: true })}
+                        ${generateColorVariable('danger', dangerColor.dark, { darkMode: true })}
+                        ${generateColorVariable('success', successColor.dark, { darkMode: true })}
                     }
                 `}</style>
             </head>
             <body
                 className={tcls(
-                    fontNotoColorEmoji.className,
-                    `${fonts[customization.styling.font].className}`,
-                    `${ibmPlexMono.variable}`,
                     'bg-tint-base',
-                    '[html.tint.sidebar-filled_&]:bg-tint-subtle', // TODO: Replace this with theme-muted:bg-tint-subtle once themes are available
+                    'theme-muted:bg-tint-subtle',
+                    'theme-bold-tint:bg-tint-subtle',
+
+                    'theme-gradient:bg-gradient-primary',
+                    'theme-gradient-tint:bg-gradient-tint'
                 )}
             >
                 <IconsProvider
-                    assetsURL={process.env.GITBOOK_ICONS_URL ?? getStaticFileURL('icons')}
-                    assetsURLToken={process.env.GITBOOK_ICONS_TOKEN}
+                    assetsURL={GITBOOK_ICONS_URL}
+                    assetsURLToken={GITBOOK_ICONS_TOKEN}
                     assetsByStyles={{
                         'custom-icons': {
-                            assetsURL: getStaticFileURL('icons'),
+                            assetsURL: getAssetURL('icons'),
                         },
                     }}
                     iconStyle={
@@ -128,7 +187,7 @@ export async function CustomizationRootLayout(props: {
  * If the tint color is not set or it is a space customization, it will return the default color.
  */
 function getTintColor(
-    customization: CustomizationSettings | SiteCustomizationSettings,
+    customization: SiteCustomizationSettings
 ): CustomizationTint['color'] | undefined {
     if ('tint' in customization.styling && customization.styling.tint) {
         return {
@@ -140,7 +199,7 @@ function getTintColor(
 
 function getTintMixColor(
     primaryColor: CustomizationThemedColor,
-    tintColor: CustomizationTint['color'] | undefined,
+    tintColor: CustomizationTint['color'] | undefined
 ): {
     color: CustomizationThemedColor;
     ratio: { light: number; dark: number };
@@ -175,7 +234,7 @@ function getTintMixColor(
  * If it is a space customization, it will return the default styles.
  */
 function getSidebarStyles(
-    customization: CustomizationSettings | SiteCustomizationSettings,
+    customization: SiteCustomizationSettings
 ): SiteCustomizationSettings['styling']['sidebar'] {
     if ('sidebar' in customization.styling) {
         return {
@@ -190,6 +249,45 @@ function getSidebarStyles(
     };
 }
 
+/**
+ * Get the semnatic color customization settings.
+ * If it is a space customization, it will return the default styles.
+ */
+function getSemanticColors(
+    customization: SiteCustomizationSettings
+): Pick<
+    SiteCustomizationSettings['styling'],
+    'infoColor' | 'successColor' | 'warningColor' | 'dangerColor'
+> {
+    if ('infoColor' in customization.styling) {
+        return {
+            infoColor: customization.styling.infoColor,
+            successColor: customization.styling.successColor,
+            warningColor: customization.styling.warningColor,
+            dangerColor: customization.styling.dangerColor,
+        };
+    }
+
+    return {
+        infoColor: {
+            light: DEFAULT_HINT_INFO_COLOR,
+            dark: DEFAULT_HINT_INFO_COLOR,
+        },
+        successColor: {
+            light: DEFAULT_HINT_SUCCESS_COLOR,
+            dark: DEFAULT_HINT_SUCCESS_COLOR,
+        },
+        warningColor: {
+            light: DEFAULT_HINT_WARNING_COLOR,
+            dark: DEFAULT_HINT_WARNING_COLOR,
+        },
+        dangerColor: {
+            light: DEFAULT_HINT_DANGER_COLOR,
+            dark: DEFAULT_HINT_DANGER_COLOR,
+        },
+    };
+}
+
 type ColorInput = string;
 function generateColorVariable(
     name: string,
@@ -199,12 +297,14 @@ function generateColorVariable(
         ...options // Pass any options along to the colorScale() function
     }: ColorScaleOptions & {
         withContrast?: boolean;
-    } = {},
+    } = {}
 ) {
     const shades: Record<string, string> =
         typeof color === 'string'
             ? Object.fromEntries(
-                  colorScale(color, options).map((shade, index) => [index + 1, shade]),
+                  colorScale(color, options)
+                      .map((shade, index) => [index + 1, shade])
+                      .concat([['original', color]])
               )
             : color;
 
@@ -217,86 +317,6 @@ function generateColorVariable(
             }`;
         })
         .join('\n');
-}
-
-function generateHeaderTheme(customization: CustomizationSettings | SiteCustomizationSettings): {
-    backgroundColor: { light: ColorInput; dark: ColorInput };
-    linkColor: { light: ColorInput; dark: ColorInput };
-} {
-    const tintColor = getTintColor(customization);
-
-    switch (customization.header.preset) {
-        case CustomizationHeaderPreset.None:
-        case CustomizationHeaderPreset.Default: {
-            return {
-                backgroundColor: {
-                    light: LIGHT_BASE,
-                    dark: DARK_BASE,
-                },
-                linkColor: {
-                    light: customization.styling.primaryColor.light,
-                    dark: customization.styling.primaryColor.dark,
-                },
-            };
-        }
-        case CustomizationHeaderPreset.Bold: {
-            return {
-                backgroundColor: {
-                    light: tintColor?.light ?? customization.styling.primaryColor.light,
-                    dark: tintColor?.dark ?? customization.styling.primaryColor.dark,
-                },
-                linkColor: {
-                    light: colorContrast(
-                        tintColor?.light ?? customization.styling.primaryColor.light,
-                        [LIGHT_BASE, DARK_BASE],
-                    ),
-                    dark: colorContrast(
-                        tintColor?.dark ?? customization.styling.primaryColor.dark,
-                        [LIGHT_BASE, DARK_BASE],
-                    ),
-                },
-            };
-        }
-        case CustomizationHeaderPreset.Contrast: {
-            return {
-                backgroundColor: {
-                    light: DARK_BASE,
-                    dark: LIGHT_BASE,
-                },
-                linkColor: {
-                    light: LIGHT_BASE,
-                    dark: DARK_BASE,
-                },
-            };
-        }
-        case CustomizationHeaderPreset.Custom: {
-            return {
-                backgroundColor: {
-                    light:
-                        customization.header.backgroundColor?.light ??
-                        tintColor?.light ??
-                        LIGHT_BASE,
-                    dark:
-                        customization.header.backgroundColor?.dark ?? tintColor?.dark ?? DARK_BASE,
-                },
-                linkColor: {
-                    light:
-                        customization.header.linkColor?.light ??
-                        (tintColor?.light &&
-                            colorContrast(tintColor.light, [LIGHT_BASE, DARK_BASE])) ??
-                        customization.styling.primaryColor.light,
-                    dark:
-                        customization.header.linkColor?.dark ??
-                        (tintColor?.dark &&
-                            colorContrast(tintColor.dark, [LIGHT_BASE, DARK_BASE])) ??
-                        customization.styling.primaryColor.dark,
-                },
-            };
-        }
-        default: {
-            assertNever(customization.header.preset);
-        }
-    }
 }
 
 const apiToIconsStyles: {

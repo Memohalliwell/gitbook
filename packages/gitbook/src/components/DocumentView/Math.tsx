@@ -1,13 +1,13 @@
-import { DocumentBlockMath, DocumentInlineMath } from '@gitbook/api';
+import type { DocumentBlockMath, DocumentInlineMath } from '@gitbook/api';
 import { MathFormula } from '@gitbook/react-math';
 
-import { getStaticFileURL } from '@/lib/assets';
+import { getAssetURL } from '@/lib/assets';
 import { tcls } from '@/lib/tailwind';
 
-import { BlockProps } from './Block';
-import { InlineProps } from './Inline';
+import type { BlockProps } from './Block';
+import type { InlineProps } from './Inline';
 
-const assetsUrl = getStaticFileURL('math');
+const assetsUrl = getAssetURL('math');
 
 export async function BlockMath(props: BlockProps<DocumentBlockMath>) {
     const { block, style } = props;

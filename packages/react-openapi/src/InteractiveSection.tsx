@@ -1,38 +1,15 @@
 'use client';
 
-import classNames from 'classnames';
-import React, { useCallback } from 'react';
+import clsx from 'clsx';
+import { useRef, useState } from 'react';
 import { mergeProps, useButton, useDisclosure, useFocusRing } from 'react-aria';
 import { useDisclosureState } from 'react-stately';
+import { Section, SectionBody, SectionHeader, SectionHeaderContent } from './StaticSection';
 
 interface InteractiveSectionTab {
     key: string;
     label: string;
     body: React.ReactNode;
-}
-
-let globalState: Record<string, string> = {};
-const listeners = new Set<() => void>();
-
-function useSyncedTabsGlobalState() {
-    const subscribe = useCallback((callback: () => void) => {
-        listeners.add(callback);
-        return () => listeners.delete(callback);
-    }, []);
-
-    const getSnapshot = useCallback(() => globalState, []);
-
-    const setSyncedTabs = useCallback(
-        (updater: (tabs: Record<string, string>) => Record<string, string>) => {
-            globalState = updater(globalState);
-            listeners.forEach((listener) => listener());
-        },
-        [],
-    );
-
-    const tabs = React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-
-    return [tabs, setSyncedTabs] as const;
 }
 
 /**
@@ -55,12 +32,8 @@ export function InteractiveSection(props: {
     defaultTab?: string;
     /** Content of the header */
     header?: React.ReactNode;
-    /** Body of the section */
-    children?: React.ReactNode;
     /** Children to display within the container */
     overlay?: React.ReactNode;
-    /** An optional key referencing a value in global state */
-    stateKey?: string;
 }) {
     const {
         id,
@@ -70,62 +43,48 @@ export function InteractiveSection(props: {
         tabs = [],
         defaultTab = tabs[0]?.key,
         header,
-        children,
         overlay,
         toggleIcon = '▶',
-        stateKey,
     } = props;
-    const [syncedTabs, setSyncedTabs] = useSyncedTabsGlobalState();
-    const tabFromState =
-        stateKey && stateKey in syncedTabs
-            ? tabs.find((tab) => tab.key === syncedTabs[stateKey])
-            : undefined;
-    const [selectedTabKey, setSelectedTab] = React.useState(tabFromState?.key ?? defaultTab);
+
+    const [selectedTabKey, setSelectedTab] = useState(defaultTab);
     const selectedTab: InteractiveSectionTab | undefined =
-        tabFromState ?? tabs.find((tab) => tab.key === selectedTabKey) ?? tabs[0];
+        tabs.find((tab) => tab.key === selectedTabKey) ?? tabs[0];
 
     const state = useDisclosureState({
         defaultExpanded: defaultOpened,
     });
-    const panelRef = React.useRef<HTMLDivElement | null>(null);
-    const triggerRef = React.useRef<HTMLButtonElement | null>(null);
+    const panelRef = useRef<HTMLDivElement | null>(null);
+    const triggerRef = useRef<HTMLButtonElement | null>(null);
     const { buttonProps: triggerProps, panelProps } = useDisclosure({}, state, panelRef);
     const { buttonProps } = useButton(triggerProps, triggerRef);
     const { isFocusVisible, focusProps } = useFocusRing();
 
     return (
-        <div
+        <Section
             id={id}
-            className={classNames(
+            className={clsx(
                 'openapi-section',
                 toggeable ? 'openapi-section-toggeable' : null,
                 className,
-                toggeable ? `${className}-${state.isExpanded ? 'opened' : 'closed'}` : null,
+                toggeable ? `${className}-${state.isExpanded ? 'opened' : 'closed'}` : null
             )}
         >
             {header ? (
-                <div
+                <SectionHeader
                     onClick={() => {
                         if (toggeable) {
                             state.toggle();
                         }
                     }}
-                    className={classNames('openapi-section-header', `${className}-header`)}
+                    className={className}
                 >
-                    <div
-                        className={classNames(
-                            'openapi-section-header-content',
-                            `${className}-header-content`,
-                        )}
-                    >
-                        {(children || selectedTab?.body) && toggeable ? (
+                    <SectionHeaderContent className={className}>
+                        {selectedTab?.body && toggeable ? (
                             <button
                                 {...mergeProps(buttonProps, focusProps)}
                                 ref={triggerRef}
-                                className={classNames(
-                                    'openapi-section-toggle',
-                                    `${className}-toggle`,
-                                )}
+                                className={clsx('openapi-section-toggle', `${className}-toggle`)}
                                 style={{
                                     outline: isFocusVisible
                                         ? '2px solid rgb(var(--primary-color-500) / 0.4)'
@@ -136,11 +95,11 @@ export function InteractiveSection(props: {
                             </button>
                         ) : null}
                         {header}
-                    </div>
+                    </SectionHeaderContent>
                     <div
-                        className={classNames(
+                        className={clsx(
                             'openapi-section-header-controls',
-                            `${className}-header-controls`,
+                            `${className}-header-controls`
                         )}
                         onClick={(event) => {
                             event.stopPropagation();
@@ -148,20 +107,14 @@ export function InteractiveSection(props: {
                     >
                         {tabs.length > 1 ? (
                             <select
-                                className={classNames(
+                                className={clsx(
                                     'openapi-section-select',
                                     'openapi-select',
-                                    `${className}-tabs-select`,
+                                    `${className}-tabs-select`
                                 )}
-                                value={selectedTab.key}
+                                value={selectedTab?.key ?? ''}
                                 onChange={(event) => {
                                     setSelectedTab(event.target.value);
-                                    if (stateKey) {
-                                        setSyncedTabs((state) => ({
-                                            ...state,
-                                            [stateKey]: event.target.value,
-                                        }));
-                                    }
                                     state.expand();
                                 }}
                             >
@@ -173,23 +126,18 @@ export function InteractiveSection(props: {
                             </select>
                         ) : null}
                     </div>
-                </div>
+                </SectionHeader>
             ) : null}
-            {(!toggeable || state.isExpanded) && (children || selectedTab?.body) ? (
-                <div
-                    ref={panelRef}
-                    {...panelProps}
-                    className={classNames('openapi-section-body', `${className}-body`)}
-                >
-                    {children}
+            {(!toggeable || state.isExpanded) && selectedTab?.body ? (
+                <SectionBody ref={panelRef} {...panelProps} className={className}>
                     {selectedTab?.body}
-                </div>
+                </SectionBody>
             ) : null}
             {overlay ? (
-                <div className={classNames('openapi-section-overlay', `${className}-overlay`)}>
+                <div className={clsx('openapi-section-overlay', `${className}-overlay`)}>
                     {overlay}
                 </div>
             ) : null}
-        </div>
+        </Section>
     );
 }

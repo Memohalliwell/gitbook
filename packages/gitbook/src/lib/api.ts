@@ -1,41 +1,34 @@
-import 'server-only';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import {
+    getCacheTag,
+    getCacheTagForURL,
+    getComputedContentSourceCacheTags,
+} from '@gitbook/cache-tags';
+import 'server-only';
 
 import {
-    ContentVisibility,
-    CustomizationSettings,
+    type ComputedContentSource,
     GitBookAPI,
     GitBookAPIError,
-    HttpResponse,
-    List,
-    PublishedSiteContentLookup,
-    RequestRenderIntegrationUI,
-    RevisionFile,
-    SiteCustomizationSettings,
-    RevisionReusableContent,
-    SiteSpace,
-    Space,
-    SiteSection,
-    PublishedSiteContent,
-    SiteSectionGroup,
-    ComputedContentSource,
-    RevisionPageDocument,
+    type HttpResponse,
+    type List,
+    type PublishedSiteContent,
+    type PublishedSiteContentLookup,
+    type RequestRenderIntegrationUI,
+    type RevisionFile,
+    type RevisionReusableContent,
 } from '@gitbook/api';
-import assertNever from 'assert-never';
 import { headers } from 'next/headers';
-import rison from 'rison';
-import { assert, DeepPartial } from 'ts-essentials';
 
 import { batch } from './async';
 import { buildVersion } from './build';
 import {
-    CacheFunctionOptions,
+    type CacheFunctionOptions,
     cache,
     cacheResponse,
     noCacheFetchOptions,
     parseCacheResponse,
 } from './cache';
-import { defaultCustomizationForSpace } from './utils';
 
 /**
  * Pointer to a relative content, it might change overtime, the pointer is relative in the content history.
@@ -115,7 +108,7 @@ export const DEFAULT_API_ENDPOINT = process.env.GITBOOK_API_URL ?? 'https://api.
  */
 export async function apiWithToken(
     apiToken: string,
-    contextId: string | undefined,
+    contextId: string | undefined
 ): Promise<GitBookAPIContext> {
     const headersList = await headers();
     const apiEndpoint = headersList.get('x-gitbook-api') ?? DEFAULT_API_ENDPOINT;
@@ -144,7 +137,7 @@ export async function api(): Promise<GitBookAPIContext> {
 
     if (!apiToken) {
         throw new Error(
-            'Missing GitBook API token, please check that the request is correctly processed by the middleware',
+            'Missing GitBook API token, please check that the request is correctly processed by the middleware'
         );
     }
 
@@ -160,7 +153,7 @@ export function withAPI<T>(client: GitBookAPIContext, fn: () => Promise<T>): Pro
 
 type SpaceContentLookup = Pick<
     PublishedSiteContent,
-    'space' | 'changeRequest' | 'revision' | 'pathname' | 'basePath' | 'apiToken'
+    'space' | 'changeRequest' | 'revision' | 'pathname' | 'basePath' | 'siteBasePath' | 'apiToken'
 > & { kind: 'space' };
 
 export type PublishedContentWithCache =
@@ -181,10 +174,11 @@ export type PublishedContentWithCache =
 export const getUserById = cache({
     name: 'api.getUserById',
     tag: (userId) =>
-        getAPICacheTag({
+        getCacheTag({
             tag: 'user',
             user: userId,
         }),
+    tagImmutable: true,
     get: async (userId: string, options: CacheFunctionOptions) => {
         try {
             const apiCtx = await api();
@@ -209,21 +203,53 @@ export const getUserById = cache({
 });
 
 /**
+ * Get the latest version of an OpenAPI spec by its slug.
+ */
+export const getLatestOpenAPISpecVersionContent = cache({
+    name: 'api.getLatestOpenApiSpecVersionContent',
+    tag: (organization, openAPISpec) =>
+        getCacheTag({
+            tag: 'openapi',
+            organization,
+            openAPISpec,
+        }),
+    get: async (organizationId: string, slug: string, options: CacheFunctionOptions) => {
+        try {
+            const apiCtx = await api();
+            const response = await apiCtx.client.orgs.getLatestOpenApiSpecVersionContent(
+                organizationId,
+                slug,
+                {
+                    ...noCacheFetchOptions,
+                    signal: options.signal,
+                }
+            );
+            return cacheResponse(response, { revalidateBefore: 60 * 60 });
+        } catch (error) {
+            if (checkHasErrorCode(error, 404)) {
+                return {
+                    revalidateBefore: 5,
+                    data: null,
+                };
+            }
+
+            throw error;
+        }
+    },
+});
+
+/**
  * Resolve a URL to the content to render.
  */
 export const getPublishedContentByUrl = cache({
     name: 'api.getPublishedContentByUrl.v4',
-    tag: (url) =>
-        getAPICacheTag({
-            tag: 'url',
-            hostname: new URL(url).hostname,
-        }),
+    tag: (url) => getCacheTagForURL(url),
     get: async (
         url: string,
         visitorAuthToken: string | undefined,
         // Prefer undefined for a better cache key.
         redirectOnError: true | undefined,
-        options: CacheFunctionOptions,
+        options: CacheFunctionOptions
     ) => {
         try {
             const apiCtx = await api();
@@ -236,7 +262,7 @@ export const getPublishedContentByUrl = cache({
                 {
                     signal: options.signal,
                     ...noCacheFetchOptions,
-                },
+                }
             );
 
             const parsed = parseCacheResponse(response);
@@ -275,7 +301,7 @@ export const getPublishedContentByUrl = cache({
  */
 export const getSpace = cache({
     name: 'api.getSpace',
-    tag: (spaceId) => getAPICacheTag({ tag: 'space', space: spaceId }),
+    tag: (spaceId) => getCacheTag({ tag: 'space', space: spaceId }),
     get: async (spaceId: string, shareKey: string | undefined, options: CacheFunctionOptions) => {
         const apiCtx = await api();
         const response = await apiCtx.client.spaces.getSpaceById(
@@ -286,7 +312,7 @@ export const getSpace = cache({
             {
                 ...noCacheFetchOptions,
                 signal: options.signal,
-            },
+            }
         );
         return cacheResponse(response, {
             revalidateBefore: 60 * 60,
@@ -304,7 +330,7 @@ function checkHasErrorCode(error: unknown, code: number) {
 export const getChangeRequest = cache({
     name: 'api.getChangeRequest',
     tag: (spaceId, changeRequestId) =>
-        getAPICacheTag({ tag: 'change-request', space: spaceId, changeRequest: changeRequestId }),
+        getCacheTag({ tag: 'change-request', space: spaceId, changeRequest: changeRequestId }),
     get: async (spaceId: string, changeRequestId: string, options: CacheFunctionOptions) => {
         const apiCtx = await api();
         try {
@@ -314,7 +340,7 @@ export const getChangeRequest = cache({
                 {
                     ...noCacheFetchOptions,
                     signal: options.signal,
-                },
+                }
             );
 
             return cacheResponse(response, {
@@ -353,13 +379,14 @@ const getAPIContextId = async () => {
 export const getRevision = cache({
     name: 'api.getRevision.v2',
     tag: (spaceId, revisionId) =>
-        getAPICacheTag({ tag: 'revision', space: spaceId, revision: revisionId }),
+        getCacheTag({ tag: 'revision', space: spaceId, revision: revisionId }),
+    tagImmutable: true,
     getKeySuffix: getAPIContextId,
     get: async (
         spaceId: string,
         revisionId: string,
         fetchOptions: GetRevisionOptions,
-        options: CacheFunctionOptions,
+        options: CacheFunctionOptions
     ) => {
         const apiCtx = await api();
         const response = await apiCtx.client.spaces.getRevisionById(
@@ -371,7 +398,7 @@ export const getRevision = cache({
             {
                 ...noCacheFetchOptions,
                 signal: options.signal,
-            },
+            }
         );
 
         return cacheResponse(response, fetchOptions.metadata ? cacheTtl_7days : cacheTtl_1day);
@@ -385,13 +412,14 @@ export const getRevision = cache({
 export const getRevisionPages = cache({
     name: 'api.getRevisionPages.v4',
     tag: (spaceId, revisionId) =>
-        getAPICacheTag({ tag: 'revision', space: spaceId, revision: revisionId }),
+        getCacheTag({ tag: 'revision', space: spaceId, revision: revisionId }),
+    tagImmutable: true,
     getKeySuffix: getAPIContextId,
     get: async (
         spaceId: string,
         revisionId: string,
         fetchOptions: GetRevisionOptions,
-        options: CacheFunctionOptions,
+        options: CacheFunctionOptions
     ) => {
         const apiCtx = await api();
         const response = await apiCtx.client.spaces.listPagesInRevisionById(
@@ -403,7 +431,7 @@ export const getRevisionPages = cache({
             {
                 ...noCacheFetchOptions,
                 signal: options.signal,
-            },
+            }
         );
 
         return cacheResponse(response, {
@@ -420,13 +448,14 @@ export const getRevisionPages = cache({
 export const getRevisionPageByPath = cache({
     name: 'api.getRevisionPageByPath.v3',
     tag: (spaceId, revisionId) =>
-        getAPICacheTag({ tag: 'revision', space: spaceId, revision: revisionId }),
+        getCacheTag({ tag: 'revision', space: spaceId, revision: revisionId }),
+    tagImmutable: true,
     getKeySuffix: getAPIContextId,
     get: async (
         spaceId: string,
         revisionId: string,
         pagePath: string,
-        options: CacheFunctionOptions,
+        options: CacheFunctionOptions
     ) => {
         const encodedPath = encodeURIComponent(pagePath);
 
@@ -442,7 +471,7 @@ export const getRevisionPageByPath = cache({
                 {
                     ...noCacheFetchOptions,
                     signal: options.signal,
-                },
+                }
             );
 
             return cacheResponse(response, cacheTtl_7days);
@@ -466,12 +495,13 @@ export const getRevisionPageByPath = cache({
 const getRevisionFileById = cache({
     name: 'api.getRevisionFile.v3',
     tag: (spaceId, revisionId) =>
-        getAPICacheTag({ tag: 'revision', space: spaceId, revision: revisionId }),
+        getCacheTag({ tag: 'revision', space: spaceId, revision: revisionId }),
+    tagImmutable: true,
     get: async (
         spaceId: string,
         revisionId: string,
         fileId: string,
-        options: CacheFunctionOptions,
+        options: CacheFunctionOptions
     ) => {
         try {
             const apiCtx = await api();
@@ -485,7 +515,7 @@ const getRevisionFileById = cache({
                 {
                     ...noCacheFetchOptions,
                     signal: options.signal,
-                },
+                }
             );
 
             return cacheResponse(response, cacheTtl_7days);
@@ -502,13 +532,14 @@ const getRevisionFileById = cache({
 const getRevisionReusableContentById = cache({
     name: 'api.getRevisionReusableContentById.v1',
     tag: (spaceId, revisionId) =>
-        getAPICacheTag({ tag: 'revision', space: spaceId, revision: revisionId }),
+        getCacheTag({ tag: 'revision', space: spaceId, revision: revisionId }),
+    tagImmutable: true,
     getKeySuffix: getAPIContextId,
     get: async (
         spaceId: string,
         revisionId: string,
         reusableContentId: string,
-        options: CacheFunctionOptions,
+        options: CacheFunctionOptions
     ) => {
         try {
             const apiCtx = await api();
@@ -522,7 +553,7 @@ const getRevisionReusableContentById = cache({
                 {
                     ...noCacheFetchOptions,
                     signal: options.signal,
-                },
+                }
             );
 
             return cacheResponse(response, cacheTtl_7days);
@@ -543,7 +574,8 @@ const getRevisionReusableContentById = cache({
 const getRevisionAllFiles = cache({
     name: 'api.getRevisionAllFiles.v2',
     tag: (spaceId, revisionId) =>
-        getAPICacheTag({ tag: 'revision', space: spaceId, revision: revisionId }),
+        getCacheTag({ tag: 'revision', space: spaceId, revision: revisionId }),
+    tagImmutable: true,
     get: async (spaceId: string, revisionId: string, options: CacheFunctionOptions) => {
         const response = await getAll(
             async (params) => {
@@ -558,13 +590,13 @@ const getRevisionAllFiles = cache({
                     {
                         ...noCacheFetchOptions,
                         signal: options.signal,
-                    },
+                    }
                 );
                 return response;
             },
             {
                 limit: 1000,
-            },
+            }
         );
 
         const files: { [fileId: string]: RevisionFile } = {};
@@ -605,19 +637,18 @@ export const getRevisionFile = batch<[string, string, string], RevisionFile | nu
                 files = await getRevisionAllFiles(spaceId, revisionId);
             }
 
-            return executions.map(([spaceId, revisionId, fileId]) => files[fileId] ?? null);
-        } else {
-            // Fetch file individually
-            return Promise.all(
-                executions.map(([spaceId, revisionId, fileId]) =>
-                    getRevisionFileById(spaceId, revisionId, fileId),
-                ),
-            );
+            return executions.map(([_spaceId, _revisionId, fileId]) => files[fileId] ?? null);
         }
+        // Fetch file individually
+        return Promise.all(
+            executions.map(([spaceId, revisionId, fileId]) =>
+                getRevisionFileById(spaceId, revisionId, fileId)
+            )
+        );
     },
     {
         delay: 20,
-        groupBy: (spaceId, revisionId) => spaceId + '/' + revisionId,
+        groupBy: (spaceId, revisionId) => `${spaceId}/${revisionId}`,
         skip: async (spaceId, revisionId, fileId) => {
             return (
                 (await getRevision.hasInMemory(spaceId, revisionId, {
@@ -627,7 +658,7 @@ export const getRevisionFile = batch<[string, string, string], RevisionFile | nu
                 (await getRevisionFileById.hasInMemory(spaceId, revisionId, fileId))
             );
         },
-    },
+    }
 );
 
 /**
@@ -636,7 +667,7 @@ export const getRevisionFile = batch<[string, string, string], RevisionFile | nu
 export const getReusableContent = async (
     spaceId: string,
     revisionId: string,
-    reusableContentId: string,
+    reusableContentId: string
 ): Promise<RevisionReusableContent | null> => {
     const hasRevisionInMemory = await getRevision.hasInMemory(spaceId, revisionId, {
         metadata: false,
@@ -646,12 +677,11 @@ export const getReusableContent = async (
         const revision = await getRevision(spaceId, revisionId, { metadata: false });
         return (
             revision.reusableContents.find(
-                (reusableContent) => reusableContent.id === reusableContentId,
+                (reusableContent) => reusableContent.id === reusableContentId
             ) ?? null
         );
-    } else {
-        return getRevisionReusableContentById(spaceId, revisionId, reusableContentId);
     }
+    return getRevisionReusableContentById(spaceId, revisionId, reusableContentId);
 };
 
 /**
@@ -660,7 +690,8 @@ export const getReusableContent = async (
 export const getDocument = cache({
     name: 'api.getDocument.v2',
     tag: (spaceId, documentId) =>
-        getAPICacheTag({ tag: 'document', space: spaceId, document: documentId }),
+        getCacheTag({ tag: 'document', space: spaceId, document: documentId }),
+    tagImmutable: true,
     getKeySuffix: getAPIContextId,
     get: async (spaceId: string, documentId: string, options: CacheFunctionOptions) => {
         const apiCtx = await api();
@@ -673,7 +704,7 @@ export const getDocument = cache({
             {
                 signal: options.signal,
                 ...noCacheFetchOptions,
-            },
+            }
         );
         return cacheResponse(response, cacheTtl_7days);
     },
@@ -688,23 +719,34 @@ export const getDocument = cache({
  */
 export const getComputedDocument = cache({
     name: 'api.getComputedDocument',
-    tag: (spaceId, source) =>
-        getAPICacheTag({
-            tag: 'computed-document',
-            space: spaceId,
-            integration: source.integration,
-        }),
+    tag: (organizationId, spaceId, source) =>
+        getComputedContentSourceCacheTags(
+            {
+                organizationId,
+                spaceId,
+            },
+            source
+        )[0],
     getKeySuffix: getAPIContextId,
-    get: async (spaceId: string, source: ComputedContentSource, options: CacheFunctionOptions) => {
+    get: async (
+        _organizationId: string,
+        spaceId: string,
+        source: ComputedContentSource,
+        seed: string,
+        options: CacheFunctionOptions
+    ) => {
         const apiCtx = await api();
         const response = await apiCtx.client.spaces.getComputedDocument(
             spaceId,
-            { source },
+            {
+                source,
+                seed,
+            },
             {},
             {
                 signal: options.signal,
                 ...noCacheFetchOptions,
-            },
+            }
         );
         return cacheResponse(response, cacheTtl_7days);
     },
@@ -713,19 +755,6 @@ export const getComputedDocument = cache({
     // and it can take more than 10s...
     timeout: 20 * 1000,
 });
-
-/**
- * Get the document for a page.
- */
-export async function getPageDocument(spaceId: string, page: RevisionPageDocument) {
-    if (page.documentId) {
-        return getDocument(spaceId, page.documentId);
-    } else if (page.computed) {
-        return getComputedDocument(spaceId, page.computed);
-    }
-
-    return null;
-}
 
 /**
  * Mimic the validation done on source server-side to reduce API usage.
@@ -739,7 +768,7 @@ function validateSiteRedirectSource(source: string) {
  */
 export const getSiteRedirectBySource = cache({
     name: 'api.getSiteRedirectBySource',
-    tag: ({ siteId }) => getAPICacheTag({ tag: 'site', site: siteId }),
+    tag: ({ siteId }) => getCacheTag({ tag: 'site', site: siteId }),
     getKeySuffix: getAPIContextId,
     get: async (
         args: {
@@ -749,7 +778,7 @@ export const getSiteRedirectBySource = cache({
             siteShareKey: string | undefined;
             source: string;
         },
-        options: CacheFunctionOptions,
+        options: CacheFunctionOptions
     ) => {
         // Validate the source to avoid unnecessary API calls.
         if (!validateSiteRedirectSource(args.source)) {
@@ -770,7 +799,7 @@ export const getSiteRedirectBySource = cache({
                 {
                     ...noCacheFetchOptions,
                     signal: options.signal,
-                },
+                }
             );
             return cacheResponse(response, cacheTtl_1day);
         } catch (error) {
@@ -800,7 +829,7 @@ export const getSiteRedirectBySource = cache({
  */
 export const getSite = cache({
     name: 'api.getSite',
-    tag: (organizationId, siteId) => getAPICacheTag({ tag: 'site', site: siteId }),
+    tag: (_organizationId, siteId) => getCacheTag({ tag: 'site', site: siteId }),
     getKeySuffix: getAPIContextId,
     get: async (organizationId: string, siteId: string, options: CacheFunctionOptions) => {
         const apiCtx = await api();
@@ -819,7 +848,7 @@ export const getSite = cache({
  */
 export const getPublishedContentSite = cache({
     name: 'api.getPublishedContentSite',
-    tag: ({ siteId }) => getAPICacheTag({ tag: 'site', site: siteId }),
+    tag: ({ siteId }) => getCacheTag({ tag: 'site', site: siteId }),
     getKeySuffix: getAPIContextId,
     get: async (
         args: {
@@ -827,7 +856,7 @@ export const getPublishedContentSite = cache({
             siteId: string /** Site share key that can be used as context to resolve site space published urls */;
             siteShareKey: string | undefined;
         },
-        options: CacheFunctionOptions,
+        options: CacheFunctionOptions
     ) => {
         const apiCtx = await api();
         const response = await apiCtx.client.orgs.getPublishedContentSite(
@@ -839,278 +868,10 @@ export const getPublishedContentSite = cache({
             {
                 ...noCacheFetchOptions,
                 signal: options.signal,
-            },
-        );
-        return cacheResponse(response, {
-            revalidateBefore: 60 * 60,
-        });
-    },
-});
-
-export type SectionsList = { list: (SiteSectionGroup | SiteSection)[]; current: SiteSection };
-
-/**
- * Parse the site spaces into a list of spaces with their title and urls.
- */
-export function parseSpacesFromSiteSpaces(siteSpaces: SiteSpace[]) {
-    const spaces: Record<string, Space> = {};
-    siteSpaces.forEach((siteSpace) => {
-        spaces[siteSpace.space.id] = {
-            ...siteSpace.space,
-            title: siteSpace.title ?? siteSpace.space.title,
-            urls: {
-                ...siteSpace.space.urls,
-                published: siteSpace.urls.published,
-            },
-        };
-    });
-    return Object.values(spaces);
-}
-
-function parseSiteSectionsList(
-    siteSectionId: string,
-    sectionsAndGroups: (SiteSectionGroup | SiteSection)[],
-) {
-    const sections = sectionsAndGroups.flatMap((item) =>
-        item.object === 'site-section-group' ? item.sections : item,
-    );
-    const section = sections.find((section) => section.id === siteSectionId);
-    assert(section, 'A section must be defined when there are multiple sections');
-    return { list: sectionsAndGroups, current: section } satisfies SectionsList;
-}
-
-/**
- * This function fetches the published content site data to render the published
- * experience for the site (structure, customizations, scripts etc)
- */
-export async function getSiteData(
-    pointer: Pick<
-        SiteContentPointer,
-        'organizationId' | 'siteId' | 'siteSectionId' | 'siteSpaceId' | 'siteShareKey'
-    >,
-) {
-    const {
-        site: orgSite,
-        structure: siteStructure,
-        customizations,
-        scripts,
-    } = await getPublishedContentSite({
-        organizationId: pointer.organizationId,
-        siteId: pointer.siteId,
-        siteShareKey: pointer.siteShareKey,
-    });
-
-    const siteSectionsAndGroups =
-        siteStructure.type === 'sections' && siteStructure.structure
-            ? siteStructure.structure
-            : null;
-
-    const siteSpaces =
-        siteStructure.type === 'siteSpaces' && siteStructure.structure
-            ? parseSpacesFromSiteSpaces(siteStructure.structure)
-            : null;
-    // override the title with the customization title
-    const site = {
-        ...orgSite,
-        ...(customizations.site?.title ? { title: customizations.site.title } : {}),
-    };
-
-    const sections =
-        pointer.siteSectionId && siteSectionsAndGroups
-            ? parseSiteSectionsList(pointer.siteSectionId, siteSectionsAndGroups)
-            : null;
-    const spaces =
-        siteSpaces ?? (sections ? parseSpacesFromSiteSpaces(sections.current.siteSpaces) : []);
-
-    const settings = (() => {
-        if (pointer.siteSpaceId) {
-            const siteSpaceSettings = customizations.siteSpaces[pointer.siteSpaceId];
-            if (siteSpaceSettings) {
-                return siteSpaceSettings;
             }
-            // We got the pointer from an API and customizations from another.
-            // It's possible that the two are unsynced leading to not found customizations for the space.
-            // It's better to fallback on customization of the site that displaying an error.
-            console.warn('Customization not found for site space', pointer.siteSpaceId);
-        }
-        return customizations.site;
-    })();
-
-    const customization = await getActiveCustomizationSettings(settings);
-
-    return {
-        customization,
-        site,
-        structure: siteStructure,
-        sections,
-        spaces,
-        scripts,
-    };
-}
-
-/**
- * Validate that the customization settings passed are valid.
- */
-export function validateSerializedCustomization(raw: string): boolean {
-    try {
-        rison.decode_object(raw);
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-/**
- * Get the customization settings for a space from the API.
- */
-export async function getSpaceCustomization(): Promise<{
-    customization: CustomizationSettings;
-}> {
-    const headersList = await headers();
-    const raw = defaultCustomizationForSpace();
-
-    const extend = headersList.get('x-gitbook-customization');
-    if (extend) {
-        try {
-            const parsed = rison.decode_object<Partial<CustomizationSettings>>(extend);
-            return { customization: { ...raw, ...parsed } };
-        } catch (error) {
-            console.error(
-                `Failed to parse x-gitbook-customization header (ignored): ${
-                    (error as Error).stack ?? (error as Error).message ?? error
-                }`,
-            );
-        }
-    }
-
-    return {
-        customization: raw,
-    };
-}
-
-/**
- * Get the infos about a collection by its ID.
- */
-export const getCollection = cache({
-    name: 'api.getCollection',
-    tag: (collectionId) => getAPICacheTag({ tag: 'collection', collection: collectionId }),
-    get: async (collectionId: string, options: CacheFunctionOptions) => {
-        const apiCtx = await api();
-        const response = await apiCtx.client.collections.getCollectionById(collectionId, {
-            ...noCacheFetchOptions,
-            signal: options.signal,
-        });
-        return cacheResponse(response, {
-            revalidateBefore: 60 * 60,
-        });
-    },
-});
-
-/**
- * List all the spaces variants published in a collection.
- */
-export const getCollectionSpaces = cache({
-    name: 'api.getCollectionSpaces',
-    tag: (collectionId) => getAPICacheTag({ tag: 'collection', collection: collectionId }),
-    get: async (collectionId: string, options: CacheFunctionOptions) => {
-        const response = await getAll(async (params) => {
-            const apiCtx = await api();
-            const response = await apiCtx.client.collections.listSpacesInCollectionById(
-                collectionId,
-                params,
-                {
-                    ...noCacheFetchOptions,
-                    signal: options.signal,
-                },
-            );
-            return response;
-        });
-
-        return cacheResponse(response, {
-            revalidateBefore: 60 * 60,
-            data: response.data.items.filter(
-                (space) => space.visibility === ContentVisibility.InCollection,
-            ),
-        });
-    },
-});
-
-/**
- * Fetch all the content data about a space at once.
- * This function executes the requests in parallel and should be used as early as possible
- * instead of calling the individual functions.
- */
-export async function getSpaceContentData(
-    pointer: SpaceContentPointer,
-    shareKey: string | undefined,
-) {
-    const [space, changeRequest] = await Promise.all([
-        getSpace(pointer.spaceId, shareKey),
-        pointer.changeRequestId ? getChangeRequest(pointer.spaceId, pointer.changeRequestId) : null,
-    ]);
-
-    const contentTarget: ContentTarget = {
-        spaceId: pointer.spaceId,
-        revisionId: changeRequest?.revision ?? pointer.revisionId ?? space.revision,
-    };
-    const pages = await getRevisionPages(space.id, contentTarget.revisionId, {
-        // We only care about the Git metadata when the Git sync is enabled
-        // otherwise we can optimize performance by not fetching it
-        metadata: !!space.gitSync,
-    });
-
-    return {
-        space,
-        pages,
-        contentTarget,
-    };
-}
-
-/**
- * Search content in a space.
- */
-export const searchSpaceContent = cache({
-    name: 'api.searchSpaceContent',
-    tag: (spaceId) => getAPICacheTag({ tag: 'space', space: spaceId }),
-    getKeySuffix: getAPIContextId,
-    get: async (
-        spaceId: string,
-        /** The revision ID is used as a cache bust key, to avoid revalidating lot of cache entries by tags */
-        revisionId: string,
-        query: string,
-        options: CacheFunctionOptions,
-    ) => {
-        const apiCtx = await api();
-        const response = await apiCtx.client.spaces.searchSpaceContent(
-            spaceId,
-            { query },
-            {
-                ...noCacheFetchOptions,
-                signal: options.signal,
-            },
-        );
-        return cacheResponse(response);
-    },
-});
-
-/**
- * Search content accross all spaces in a parent (site or collection).
- */
-export const searchParentContent = cache({
-    name: 'api.searchParentContent',
-    tag: (spaceId) => getAPICacheTag({ tag: 'space', space: spaceId }),
-    getKeySuffix: getAPIContextId,
-    get: async (parentId: string, query: string, options: CacheFunctionOptions) => {
-        const apiCtx = await api();
-        const response = await apiCtx.client.search.searchContent(
-            { query },
-            {
-                ...noCacheFetchOptions,
-                signal: options.signal,
-            },
         );
         return cacheResponse(response, {
-            ttl: 60 * 60,
+            revalidateBefore: 60 * 60,
         });
     },
 });
@@ -1120,7 +881,7 @@ export const searchParentContent = cache({
  */
 export const searchSiteContent = cache({
     name: 'api.searchSiteContent',
-    tag: (organizationId, siteId) => getAPICacheTag({ tag: 'site', site: siteId }),
+    tag: (_organizationId, siteId) => getCacheTag({ tag: 'site', site: siteId }),
     getKeySuffix: getAPIContextId,
     get: async (
         organizationId: string,
@@ -1131,8 +892,8 @@ export const searchSiteContent = cache({
             | { mode: 'current'; siteSpaceId: string }
             | { mode: 'specific'; siteSpaceIds: string[] },
         /** A cache bust param to avoid revalidating lot of cache entries by tags */
-        cacheBust?: string,
-        options?: CacheFunctionOptions,
+        _cacheBust?: string,
+        options?: CacheFunctionOptions
     ) => {
         const apiCtx = await api();
         const response = await apiCtx.client.orgs.searchSiteContent(
@@ -1146,7 +907,7 @@ export const searchSiteContent = cache({
             {
                 ...noCacheFetchOptions,
                 signal: options?.signal,
-            },
+            }
         );
 
         return cacheResponse(response, {
@@ -1160,11 +921,11 @@ export const searchSiteContent = cache({
  */
 export const renderIntegrationUi = cache({
     name: 'api.renderIntegrationUi',
-    tag: (integrationName) => getAPICacheTag({ tag: 'integration', integration: integrationName }),
+    tag: (integrationName) => getCacheTag({ tag: 'integration', integration: integrationName }),
     get: async (
         integrationName: string,
         request: RequestRenderIntegrationUI,
-        options: CacheFunctionOptions,
+        options: CacheFunctionOptions
     ) => {
         const apiCtx = await api();
         const response = await apiCtx.client.integrations.renderIntegrationUiWithPost(
@@ -1173,26 +934,7 @@ export const renderIntegrationUi = cache({
             {
                 ...noCacheFetchOptions,
                 signal: options.signal,
-            },
-        );
-        return cacheResponse(response);
-    },
-});
-
-/**
- * Fetch an embed.
- * We don't cache them by cache tag, as we never purge them (they expire after 7 days).
- */
-export const getEmbedByUrl = cache({
-    name: 'api.getEmbedByUrl',
-    get: async (url: string, options: CacheFunctionOptions) => {
-        const apiCtx = await api();
-        const response = await apiCtx.client.urls.getEmbedByUrl(
-            { url },
-            {
-                ...noCacheFetchOptions,
-                signal: options.signal,
-            },
+            }
         );
         return cacheResponse(response);
     },
@@ -1203,7 +945,7 @@ export const getEmbedByUrl = cache({
  */
 export const getEmbedByUrlInSpace = cache({
     name: 'api.getEmbedByUrlInSpace',
-    tag: (spaceId) => getAPICacheTag({ tag: 'space', space: spaceId }),
+    tag: (spaceId) => getCacheTag({ tag: 'space', space: spaceId }),
     get: async (spaceId: string, url: string, options: CacheFunctionOptions) => {
         const apiCtx = await api();
         const response = await apiCtx.client.spaces.getEmbedByUrlInSpace(
@@ -1212,96 +954,11 @@ export const getEmbedByUrlInSpace = cache({
             {
                 ...noCacheFetchOptions,
                 signal: options.signal,
-            },
+            }
         );
         return cacheResponse(response, cacheTtl_7days);
     },
 });
-
-/**
- * Create a cache tag for the API.
- */
-export function getAPICacheTag(
-    spec: // All data related to a user
-    | {
-              tag: 'user';
-              user: string;
-          }
-        // All data related to a space
-        | {
-              tag: 'space';
-              space: string;
-          }
-        // All data related to an integration
-        | {
-              tag: 'integration';
-              integration: string;
-          }
-        // All data related to a change request
-        | {
-              tag: 'change-request';
-              space: string;
-              changeRequest: string;
-          }
-        // Immutable data related to a revision
-        | {
-              tag: 'revision';
-              space: string;
-              revision: string;
-          }
-        // Immutable data related to a document
-        | {
-              tag: 'document';
-              space: string;
-              document: string;
-          }
-        // Immutable data related to a computed document
-        | {
-              tag: 'computed-document';
-              space: string;
-              integration: string;
-          }
-        // All data related to the URL of a content
-        | {
-              tag: 'url';
-              hostname: string;
-          }
-        // All data related to a collection
-        | {
-              tag: 'collection';
-              collection: string;
-          }
-        // All data related to a site
-        | {
-              tag: 'site';
-              site: string;
-          },
-): string {
-    switch (spec.tag) {
-        case 'user':
-            return `user:${spec.user}`;
-        case 'url':
-            return `url:${spec.hostname}`;
-        case 'space':
-            return `space:${spec.space}`;
-        case 'change-request':
-            return `space:${spec.space}:change-request:${spec.changeRequest}`;
-        case 'revision':
-            return `space:${spec.space}:revision:${spec.revision}`;
-        case 'document':
-            return `space:${spec.space}:document:${spec.document}`;
-        case 'computed-document':
-            return `space:${spec.space}:computed-document:${spec.integration}`;
-        case 'collection':
-            return `collection:${spec.collection}`;
-        case 'site':
-            return `site:${spec.site}`;
-        case 'integration':
-            return `integration:${spec.integration}`;
-        default:
-            assertNever(spec);
-    }
-}
 
 /**
  * Return the user agent to use for API requests.
@@ -1320,25 +977,6 @@ export function userAgent(): string {
 }
 
 /**
- * Ignore error for an API call.
- */
-export async function ignoreAPIError<T>(
-    promise: Promise<T>,
-    ignoreAll: boolean = false,
-): Promise<T | null> {
-    try {
-        return await promise;
-    } catch (error) {
-        const code = (error as GitBookAPIError).code;
-        if (ignoreAll || (code >= 400 && code < 500)) {
-            return null;
-        }
-
-        throw error;
-    }
-}
-
-/**
  * Iterate over a paginated API endpoint and return all the items.
  */
 async function getAll<T, E>(
@@ -1352,7 +990,7 @@ async function getAll<T, E>(
     >,
     options: {
         limit?: number;
-    } = {},
+    } = {}
 ): Promise<
     HttpResponse<
         List & {
@@ -1366,7 +1004,8 @@ async function getAll<T, E>(
     let page: string | undefined = undefined;
     const result: T[] = [];
 
-    while (1) {
+    const maxPages = 100;
+    for (let i = 0; i < maxPages; i++) {
         const response = await getPage({ page, limit });
         result.push(...response.data.items);
 
@@ -1378,31 +1017,5 @@ async function getAll<T, E>(
         }
     }
 
-    throw new Error('Unreachable');
-}
-
-/**
- * Selects the customization settings from the x-gitbook-customization header if present,
- * otherwise returns the original API-provided settings.
- */
-async function getActiveCustomizationSettings(
-    settings: SiteCustomizationSettings,
-): Promise<SiteCustomizationSettings> {
-    const headersList = await headers();
-    const extend = headersList.get('x-gitbook-customization');
-    if (extend) {
-        try {
-            const parsedSettings = rison.decode_object<SiteCustomizationSettings>(extend);
-
-            return parsedSettings;
-        } catch (error) {
-            console.error(
-                `Failed to parse x-gitbook-customization header (ignored): ${
-                    (error as Error).stack ?? (error as Error).message ?? error
-                }`,
-            );
-        }
-    }
-
-    return settings;
+    throw new Error('Pagination limit reached');
 }

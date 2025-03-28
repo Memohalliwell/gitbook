@@ -1,12 +1,13 @@
 import hash from 'object-hash';
 
+import { race, singletonMap } from '../async';
+import { type TraceSpan, trace } from '../tracing';
+import { assertIsNotV2 } from '../v2';
+import { waitUntil } from '../waitUntil';
 import { cacheBackends } from './backends';
 import { memoryCache } from './memory';
-import { CacheBackend, CacheEntry } from './types';
-import { captureException } from '../../sentry';
-import { race, singletonMap } from '../async';
-import { TraceSpan, trace } from '../tracing';
-import { waitUntil } from '../waitUntil';
+import { addResponseCacheTag } from './response';
+import type { CacheBackend, CacheEntry } from './types';
 
 export type CacheFunctionOptions = {
     signal: AbortSignal | undefined;
@@ -53,6 +54,9 @@ export interface CacheDefinition<Args extends any[], Result> {
     /** Tag to associate to the entry */
     tag?: (...args: Args) => string;
 
+    /** If true, the tag will not be sent to the HTTP response, as we consider it immutable */
+    tagImmutable?: boolean;
+
     /** Filter the arguments that should be taken into consideration for the cache key */
     getKeyArgs?: (args: Args) => any[];
 
@@ -74,7 +78,7 @@ export interface CacheDefinition<Args extends any[], Result> {
  * We don't use the next.js cache because it has a 2MB limit.
  */
 export function cache<Args extends any[], Result>(
-    cacheDef: CacheDefinition<Args, Result>,
+    cacheDef: CacheDefinition<Args, Result>
 ): CacheFunction<Args, Result> {
     // We stop everything after 10s to avoid pending requests
     const timeout = cacheDef.timeout ?? 1000 * 10;
@@ -82,10 +86,11 @@ export function cache<Args extends any[], Result>(
 
     const revalidate = singletonMap(
         async (key: string, signal: AbortSignal | undefined, ...args: Args) => {
+            assertIsNotV2();
             return await trace(
                 {
                     name: key,
-                    operation: `cache.revalidate`,
+                    operation: 'cache.revalidate',
                 },
                 async (span) => {
                     // Fetch upstream
@@ -118,9 +123,9 @@ export function cache<Args extends any[], Result>(
                     }
 
                     return cacheEntry;
-                },
+                }
             );
-        },
+        }
     );
 
     const fetchValue = singletonMap(
@@ -131,6 +136,11 @@ export function cache<Args extends any[], Result>(
 
             let result: readonly [CacheEntry, string] | null = null;
             const tag = cacheDef.tag?.(...args);
+
+            // Add the cache tag to the HTTP response
+            if (tag && !cacheDef.tagImmutable) {
+                addResponseCacheTag(tag);
+            }
 
             // Try the memory backend, independently of the other backends as it doesn't have a network cost
             const memoryEntry = await memoryCache.get({ key, tag });
@@ -148,17 +158,11 @@ export function cache<Args extends any[], Result>(
                         }
 
                         // Detect empty cache entries to avoid returning them.
-                        // Also log in Sentry to investigate what cache is returning empty entries.
                         if (
                             entry.data &&
                             typeof entry.data === 'object' &&
                             Object.keys(entry.data).length === 0
                         ) {
-                            captureException(
-                                new Error(
-                                    `Cache entry ${key} from ${backendName} is an empty object`,
-                                ),
-                            );
                             return null;
                         }
 
@@ -183,7 +187,7 @@ export function cache<Args extends any[], Result>(
 
                         // If no entry is found in the cache backends, we fallback to the fetch
                         fallbackOnNull: true,
-                    },
+                    }
                 );
             }
 
@@ -211,9 +215,9 @@ export function cache<Args extends any[], Result>(
                         savedEntry,
                         cacheBackends.filter(
                             (backend) =>
-                                backend.name !== backendName && backend.replication === 'local',
-                        ),
-                    ),
+                                backend.name !== backendName && backend.replication === 'local'
+                        )
+                    )
                 );
             }
 
@@ -221,12 +225,13 @@ export function cache<Args extends any[], Result>(
 
             // Log
             if (process.env.SILENT !== 'true') {
+                // biome-ignore lint/suspicious/noConsole: we want to log here
                 console.log(
                     `cache: ${key} ${cacheStatus}${
                         cacheStatus === 'hit' ? ` on ${backendName}` : ''
                     } in total ${totalDuration.toFixed(0)}ms, fetch in ${fetchDuration.toFixed(
-                        0,
-                    )}ms, read in ${readCacheDuration.toFixed(0)}ms`,
+                        0
+                    )}ms, read in ${readCacheDuration.toFixed(0)}ms`
                 );
             }
 
@@ -236,12 +241,13 @@ export function cache<Args extends any[], Result>(
             }
 
             return savedEntry.data;
-        },
+        }
     );
 
     // During development, for now it fetches data twice between the middleware and the handler.
     // TODO: find a way to share the cache between the two.
     const cacheFn = async (...rawArgs: Args | [...Args, CacheFunctionOptions]) => {
+        assertIsNotV2();
         const [args, { signal }] = extractCacheFunctionOptions<Args>(rawArgs);
 
         const cacheArgs = cacheDef.getKeyArgs ? cacheDef.getKeyArgs(args) : args;
@@ -251,16 +257,17 @@ export function cache<Args extends any[], Result>(
         return await trace(
             {
                 name: key,
-                operation: `cache.get`,
+                operation: 'cache.get',
             },
             async (span) => {
                 signal?.throwIfAborted();
                 return fetchValue(key, signal, span, ...args);
-            },
+            }
         );
     };
 
     cacheFn.revalidate = async (...rawArgs: Args | [...Args, CacheFunctionOptions]) => {
+        assertIsNotV2();
         const [args, { signal }] = extractCacheFunctionOptions<Args>(rawArgs);
         const cacheArgs = cacheDef.getKeyArgs ? cacheDef.getKeyArgs(args) : args;
         const cacheKeySuffix = cacheDef.getKeySuffix ? await cacheDef.getKeySuffix() : undefined;
@@ -271,6 +278,7 @@ export function cache<Args extends any[], Result>(
     };
 
     cacheFn.hasInMemory = async (...args: Args) => {
+        assertIsNotV2();
         const cacheArgs = cacheDef.getKeyArgs ? cacheDef.getKeyArgs(args) : args;
         const cacheKeySuffix = cacheDef.getKeySuffix ? await cacheDef.getKeySuffix() : undefined;
         const key = getCacheKey(cacheDef.name, cacheArgs, cacheKeySuffix);
@@ -332,13 +340,13 @@ function hashValue(arg: any): string {
 async function setCacheEntry(entry: CacheEntry, backend: CacheBackend | CacheBackend[]) {
     return await trace(
         {
-            operation: `cache.setCacheEntry`,
+            operation: 'cache.setCacheEntry',
             name: entry.meta.key,
         },
         async () => {
             const backends = Array.isArray(backend) ? backend : [backend];
             await Promise.all(backends.map((backend) => backend.set(entry)));
-        },
+        }
     );
 }
 
@@ -358,7 +366,7 @@ function isCacheFunctionOptions(arg: any): arg is CacheFunctionOptions {
 }
 
 function extractCacheFunctionOptions<Args extends any[]>(
-    args: Args | [...Args, CacheFunctionOptions],
+    args: Args | [...Args, CacheFunctionOptions]
 ): [Args, CacheFunctionOptions] {
     const lastArg = args[args.length - 1];
     if (isCacheFunctionOptions(lastArg)) {

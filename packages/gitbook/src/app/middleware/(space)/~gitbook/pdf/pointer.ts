@@ -1,5 +1,19 @@
-import { SiteContentPointer, SpaceContentPointer } from '@/lib/api';
+import type { GitBookSiteContext, GitBookSpaceContext } from '@v2/lib/context';
+
+import type { SiteContentPointer, SpaceContentPointer } from '@/lib/api';
 import { getSiteContentPointer, getSpacePointer } from '@/lib/pointer';
+import { fetchV1ContextForSitePointer, fetchV1ContextForSpacePointer } from '@/lib/v1';
+
+/**
+ * Get the context for the PDF pointer.
+ */
+export async function getV1ContextForPDF(): Promise<GitBookSiteContext | GitBookSpaceContext> {
+    const pointer = await getSiteOrSpacePointerForPDF();
+
+    return 'siteId' in pointer && pointer.siteId
+        ? await fetchV1ContextForSitePointer(pointer)
+        : await fetchV1ContextForSpacePointer(pointer);
+}
 
 /**
  * PDF generation can be done at the site level (e.g. docs.foo.com/~gitbook/pdf) or
@@ -8,12 +22,10 @@ import { getSiteContentPointer, getSpacePointer } from '@/lib/pointer';
  *
  * This function returns the pointer depending on the context.
  */
-export async function getSiteOrSpacePointerForPDF(): Promise<
-    SiteContentPointer | SpaceContentPointer
-> {
+async function getSiteOrSpacePointerForPDF(): Promise<SiteContentPointer | SpaceContentPointer> {
     try {
         return await getSiteContentPointer();
-    } catch (error) {
+    } catch (_error) {
         return getSpacePointer();
     }
 }

@@ -1,13 +1,13 @@
-import * as React from 'react';
-import classNames from 'classnames';
+import clsx from 'clsx';
 
-import { OpenAPIOperationData } from './fetchOpenAPIOperation';
+import type { OpenAPICustomOperationProperties, OpenAPIV3 } from '@gitbook/openapi-parser';
 import { Markdown } from './Markdown';
 import { OpenAPICodeSample } from './OpenAPICodeSample';
+import { OpenAPIPath } from './OpenAPIPath';
 import { OpenAPIResponseExample } from './OpenAPIResponseExample';
 import { OpenAPISpec } from './OpenAPISpec';
-import { OpenAPIClientContext, OpenAPIContextProps } from './types';
-import { OpenAPIPath } from './OpenAPIPath';
+import type { OpenAPIClientContext, OpenAPIContextProps, OpenAPIOperationData } from './types';
+import { resolveDescription } from './utils';
 
 /**
  * Display an interactive OpenAPI operation.
@@ -26,42 +26,66 @@ export function OpenAPIOperation(props: {
         blockKey: context.blockKey,
     };
 
-    const trimmedDescription = operation.description?.trim();
-
     return (
-        <div className={classNames('openapi-operation', className)}>
-            <div className="openapi-summary" id={context.id}>
-                <h2 className="openapi-summary-title" data-deprecated={operation.deprecated}>
-                    {operation.summary}
-                </h2>
+        <div className={clsx('openapi-operation', className)}>
+            <div className="openapi-summary" id={operation.summary ? undefined : context.id}>
+                {operation.summary
+                    ? context.renderHeading({
+                          deprecated: operation.deprecated ?? false,
+                          title: operation.summary,
+                      })
+                    : null}
+                <OpenAPIPath data={data} context={context} />
                 {operation.deprecated && <div className="openapi-deprecated">Deprecated</div>}
             </div>
-            <div className={classNames('openapi-columns')}>
-                <div className={classNames('openapi-column-spec')}>
+            <div className="openapi-columns">
+                <div className="openapi-column-spec">
                     {operation['x-deprecated-sunset'] ? (
                         <div className="openapi-deprecated-sunset openapi-description openapi-markdown">
                             This operation is deprecated and will be sunset on{' '}
                             <span className="openapi-deprecated-sunset-date">
                                 {operation['x-deprecated-sunset']}
                             </span>
-                            {`.`}
+                            {'.'}
                         </div>
                     ) : null}
-                    {trimmedDescription ? (
-                        <div className="openapi-intro">
-                            <Markdown className="openapi-description" source={trimmedDescription} />
-                        </div>
-                    ) : null}
-                    <OpenAPIPath data={data} context={context} />
+                    <OpenAPIOperationDescription operation={operation} context={context} />
                     <OpenAPISpec data={data} context={clientContext} />
                 </div>
-                <div className={classNames('openapi-column-preview')}>
-                    <div className={classNames('openapi-column-preview-body')}>
+                <div className="openapi-column-preview">
+                    <div className="openapi-column-preview-body">
                         <OpenAPICodeSample {...props} />
                         <OpenAPIResponseExample {...props} />
                     </div>
                 </div>
             </div>
+        </div>
+    );
+}
+
+function OpenAPIOperationDescription(props: {
+    operation: OpenAPIV3.OperationObject<OpenAPICustomOperationProperties>;
+    context: OpenAPIContextProps;
+}) {
+    const { operation } = props;
+    if (operation['x-gitbook-description-document']) {
+        return (
+            <div className="openapi-intro">
+                {props.context.renderDocument({
+                    document: operation['x-gitbook-description-document'],
+                })}
+            </div>
+        );
+    }
+
+    const description = resolveDescription(operation);
+    if (!description) {
+        return null;
+    }
+
+    return (
+        <div className="openapi-intro">
+            <Markdown className="openapi-description" source={description} />
         </div>
     );
 }

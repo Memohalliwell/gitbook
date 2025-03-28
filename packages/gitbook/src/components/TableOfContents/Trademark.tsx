@@ -1,12 +1,11 @@
-import {
-    CustomizationSettings,
+import type {
     SiteCustomizationSettings,
-    Space,
     SiteInsightsTrademarkPlacement,
+    Space,
 } from '@gitbook/api';
 import { Icon } from '@gitbook/icons';
 
-import { t, getSpaceLanguage } from '@/intl/server';
+import { getSpaceLanguage, t } from '@/intl/server';
 import { tcls } from '@/lib/tailwind';
 
 import { Link } from '../primitives';
@@ -16,7 +15,7 @@ import { Link } from '../primitives';
  */
 export function Trademark(props: {
     space: Space;
-    customization: CustomizationSettings | SiteCustomizationSettings;
+    customization: SiteCustomizationSettings;
     placement: SiteInsightsTrademarkPlacement;
 }) {
     return (
@@ -25,7 +24,6 @@ export function Trademark(props: {
                 'relative',
                 'z-[2]',
                 'lg:absolute',
-                'mt-6',
 
                 'left-0',
                 'right-2',
@@ -34,10 +32,13 @@ export function Trademark(props: {
                 'pointer-events-none',
                 'sidebar-filled:pl-2',
                 'sidebar-filled:pb-2',
+                'sidebar-filled:page-no-toc:p-0',
 
                 'bg-tint-base',
                 'sidebar-filled:bg-tint-subtle',
-                '[html.tint.sidebar-filled_&]:bg-tint-base',
+                'theme-muted:bg-tint-subtle',
+                '[html.sidebar-filled.theme-muted_&]:bg-tint-base',
+                '[html.sidebar-filled.theme-bold.tint_&]:bg-tint-base',
 
                 'before:hidden',
                 'lg:before:block',
@@ -50,7 +51,11 @@ export function Trademark(props: {
                 'before:from-transparent',
                 'before:to-tint-base',
                 'sidebar-filled:before:to-tint-subtle',
-                '[html.tint.sidebar-filled_&]:before:to-tint-base',
+                'theme-muted:before:to-tint-subtle',
+                'theme-bold-tint:before:to-tint-subtle',
+                '[html.sidebar-filled.theme-muted_&]:before:to-tint-base',
+                '[html.sidebar-filled.theme-bold.tint_&]:before:to-tint-base',
+                'page-no-toc:before:!to-transparent'
             )}
         >
             <TrademarkLink {...props} />
@@ -63,7 +68,7 @@ export function Trademark(props: {
  */
 export function TrademarkLink(props: {
     space: Space;
-    customization: CustomizationSettings | SiteCustomizationSettings;
+    customization: SiteCustomizationSettings;
     placement: SiteInsightsTrademarkPlacement;
 }) {
     const { space, customization, placement } = props;
@@ -80,6 +85,9 @@ export function TrademarkLink(props: {
             href={url.toString()}
             className={tcls(
                 'text-sm',
+                // 'page-no-toc:lg:max-xl:text-xs',
+                // 'page-no-toc:lg:max-xl:px-3',
+                // 'page-no-toc:lg:max-xl:py-3',
                 'font-semibold',
                 'text-tint',
 
@@ -88,7 +96,9 @@ export function TrademarkLink(props: {
                 'items-center',
                 'px-5',
                 'py-4',
+
                 'sidebar-filled:px-3',
+                'sidebar-filled:page-no-toc:lg:px-5',
 
                 'rounded-lg',
                 'straight-corners:rounded-none',
@@ -102,15 +112,29 @@ export function TrademarkLink(props: {
                 'ring-tint-subtle',
 
                 'transition-colors',
-                'pointer-events-auto',
+                'pointer-events-auto'
             )}
             insights={{
                 type: 'trademark_click',
                 placement,
             }}
         >
-            <Icon icon="gitbook" className={tcls('size-5', 'mr-3')} />
-            {t(language, 'powered_by_gitbook')}
+            <Icon
+                icon="gitbook"
+                className={tcls(
+                    'size-5',
+                    // 'page-no-toc:lg:max-xl:size-4',
+                    'shrink-0'
+                )}
+            />
+            <span
+                className={tcls(
+                    'ml-3'
+                    // 'page-no-toc:lg:max-xl:ml-2'
+                )}
+            >
+                {t(language, 'powered_by_gitbook')}
+            </span>
         </Link>
     );
 }

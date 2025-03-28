@@ -1,15 +1,13 @@
 import {
-    CustomizationContentLink,
-    CustomizationHeaderItem,
-    CustomizationHeaderPreset,
-    CustomizationSettings,
-    SiteCustomizationSettings,
+    type CustomizationContentLink,
+    type CustomizationHeaderItem,
     SiteInsightsLinkPosition,
 } from '@gitbook/api';
 import { Icon } from '@gitbook/icons';
-import React from 'react';
+import type { GitBookSiteContext } from '@v2/lib/context';
+import type React from 'react';
 
-import { ContentRefContext, resolveContentRef } from '@/lib/references';
+import { resolveContentRef } from '@/lib/references';
 import { tcls } from '@/lib/tailwind';
 
 import { Dropdown, DropdownChevron, DropdownMenu, DropdownMenuItem } from './Dropdown';
@@ -21,23 +19,22 @@ import styles from './headerLinks.module.css';
 export function HeaderLinkMore(props: {
     label: React.ReactNode;
     links: CustomizationHeaderItem[];
-    context: ContentRefContext;
-    customization: CustomizationSettings | SiteCustomizationSettings;
+    context: GitBookSiteContext;
 }) {
-    const { label, links, context, customization } = props;
-
-    const isCustomizationDefault =
-        customization.header.preset === CustomizationHeaderPreset.Default;
+    const { label, links, context } = props;
 
     const renderButton = () => (
         <button
+            type="button"
             className={tcls(
-                isCustomizationDefault
-                    ? ['text-tint', 'hover:text-primary', 'dark:hover:text-primary']
-                    : ['text-header-link', 'hover:text-header-link/8'],
+                'text-tint',
+                'hover:text-primary',
+                'dark:hover:text-primary',
+                'theme-bold:text-header-link',
+                'theme-bold:hover:text-header-link/8',
                 'flex',
                 'gap-1',
-                'items-center',
+                'items-center'
             )}
         >
             <span className="sr-only">{label}</span>
@@ -47,8 +44,14 @@ export function HeaderLinkMore(props: {
     );
 
     return (
-        <div className={`${styles.linkEllipsis} items-center z-20`}>
-            <Dropdown button={renderButton} className="-translate-x-48 md:translate-x-0">
+        <div className={`${styles.linkEllipsis} z-20 items-center`}>
+            <Dropdown
+                button={renderButton}
+                className={tcls(
+                    'max-md:right-0 max-md:left-auto',
+                    context.customization.styling.search === 'prominent' && 'right-0 left-auto'
+                )}
+            >
                 <DropdownMenu>
                     {links.map((link, index) => (
                         <MoreMenuLink key={index} link={link} context={context} />
@@ -60,7 +63,7 @@ export function HeaderLinkMore(props: {
 }
 
 async function MoreMenuLink(props: {
-    context: ContentRefContext;
+    context: GitBookSiteContext;
     link: CustomizationHeaderItem | CustomizationContentLink;
 }) {
     const { context, link } = props;
@@ -70,7 +73,7 @@ async function MoreMenuLink(props: {
     return (
         <>
             {'links' in link && link.links.length > 0 && (
-                <hr className="first:hidden border-t border-tint my-1 -mx-2" />
+                <hr className="-mx-2 my-1 border-tint border-t first:hidden" />
             )}
             <DropdownMenuItem
                 href={target?.href ?? null}

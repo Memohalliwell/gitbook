@@ -1,4 +1,13 @@
-import React from 'react';
+'use client';
+
+import { createContext, useContext, useRef, useState } from 'react';
+import { mergeProps, useButton, useDisclosure, useFocusRing, useId } from 'react-aria';
+import {
+    type DisclosureGroupProps,
+    type DisclosureGroupState,
+    useDisclosureGroupState,
+    useDisclosureState,
+} from 'react-stately';
 
 interface Props {
     groups: TDisclosureGroup[];
@@ -10,21 +19,12 @@ type TDisclosureGroup = {
     label: string | React.ReactNode;
     tabs?: {
         id: string;
-        label: string | React.ReactNode;
+        label?: string | React.ReactNode;
         body?: React.ReactNode;
     }[];
 };
 
-import { mergeProps, useButton, useDisclosure, useFocusRing, useId } from 'react-aria';
-import {
-    DisclosureGroupProps,
-    DisclosureGroupState,
-    useDisclosureGroupState,
-    useDisclosureState,
-} from 'react-stately';
-import classNames from 'classnames';
-
-const DisclosureGroupStateContext = React.createContext<DisclosureGroupState | null>(null);
+const DisclosureGroupStateContext = createContext<DisclosureGroupState | null>(null);
 
 /**
  * Display an interactive OpenAPI disclosure group.
@@ -48,7 +48,7 @@ function DisclosureItem(props: { group: TDisclosureGroup; icon?: React.ReactNode
 
     const defaultId = useId();
     const id = group.id || defaultId;
-    const groupState = React.useContext(DisclosureGroupStateContext);
+    const groupState = useContext(DisclosureGroupStateContext);
     const isExpanded = groupState?.expandedKeys.has(id) || false;
     const state = useDisclosureState({
         isExpanded,
@@ -59,8 +59,8 @@ function DisclosureItem(props: { group: TDisclosureGroup; icon?: React.ReactNode
         },
     });
 
-    const panelRef = React.useRef<HTMLDivElement | null>(null);
-    const triggerRef = React.useRef<HTMLButtonElement | null>(null);
+    const panelRef = useRef<HTMLDivElement | null>(null);
+    const triggerRef = useRef<HTMLButtonElement | null>(null);
     const isDisabled = groupState?.isDisabled || !group.tabs?.length || false;
     const { buttonProps: triggerProps, panelProps } = useDisclosure(
         {
@@ -69,13 +69,13 @@ function DisclosureItem(props: { group: TDisclosureGroup; icon?: React.ReactNode
             isDisabled,
         },
         state,
-        panelRef,
+        panelRef
     );
     const { buttonProps } = useButton(triggerProps, triggerRef);
     const { isFocusVisible, focusProps } = useFocusRing();
 
     const defaultTab = group.tabs?.[0]?.id || '';
-    const [selectedTabKey, setSelectedTabKey] = React.useState(defaultTab);
+    const [selectedTabKey, setSelectedTabKey] = useState(defaultTab);
     const selectedTab = group.tabs?.find((tab) => tab.id === selectedTabKey);
 
     return (
@@ -107,11 +107,7 @@ function DisclosureItem(props: { group: TDisclosureGroup; icon?: React.ReactNode
                     <div className="openapi-disclosure-group-mediatype">
                         {group.tabs?.length > 1 ? (
                             <select
-                                className={classNames(
-                                    'openapi-section-select',
-                                    'openapi-select',
-                                    `openapi-disclosure-group-tabs-select`,
-                                )}
+                                className="openapi-section-select openapi-select openapi-disclosure-group-tabs-select"
                                 onClick={(event) => event.stopPropagation()}
                                 value={selectedTab?.id}
                                 onChange={(event) => {
@@ -125,7 +121,7 @@ function DisclosureItem(props: { group: TDisclosureGroup; icon?: React.ReactNode
                                     </option>
                                 ))}
                             </select>
-                        ) : !!group.tabs[0] ? (
+                        ) : group.tabs[0]?.label ? (
                             <span>{group.tabs[0].label}</span>
                         ) : null}
                     </div>

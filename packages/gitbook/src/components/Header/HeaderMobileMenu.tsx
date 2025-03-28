@@ -2,9 +2,9 @@
 
 import { Icon } from '@gitbook/icons';
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
-import { useLanguage, tString } from '@/intl/client';
+import { tString, useLanguage } from '@/intl/client';
 import { tcls } from '@/lib/tailwind';
 
 import { useScrollListener } from '../hooks/useScrollListener';
@@ -47,19 +47,11 @@ export function HeaderMobileMenu(props: Partial<React.ButtonHTMLAttributes<HTMLB
             aria-label={tString(language, 'table_of_contents_button_label')}
             onClick={toggleNavigation}
             className={tcls(
-                'flex',
-                'flex-row',
-                'items-center',
-                'hover:bg-tint-hover',
-                'py-1',
-                'px-2',
-                'rounded',
-                'straight-corners:rounded-sm',
-                'page-no-toc:hidden',
-                props.className,
+                'flex flex-row items-center rounded straight-corners:rounded-sm px-2 py-1',
+                props.className
             )}
         >
-            <Icon icon="bars" className={tcls('size-4', 'text-inherit')} />
+            <Icon icon="bars" className="size-4 text-inherit" />
         </button>
     );
 }

@@ -1,4 +1,4 @@
-import { DocumentBlockCode, JSONDocument } from '@gitbook/api';
+import type { DocumentBlockCode, JSONDocument } from '@gitbook/api';
 import { useId } from 'react';
 
 import { CodeBlock } from './CodeBlock';
@@ -48,8 +48,6 @@ export function PlainCodeBlock(props: { code: string; syntax: string }) {
             document={document}
             context={{
                 mode: 'default',
-                contentRefContext: null,
-                resolveContentRef: async () => null,
             }}
             block={block}
             ancestorBlocks={[]}

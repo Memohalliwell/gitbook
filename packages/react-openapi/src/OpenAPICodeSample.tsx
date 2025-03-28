@@ -1,14 +1,19 @@
-import React from 'react';
-
-import { CodeSampleInput, codeSampleGenerators } from './code-samples';
-import { OpenAPIOperationData } from './fetchOpenAPIOperation';
-import { generateMediaTypeExample, generateSchemaExample } from './generateSchemaExample';
-import { InteractiveSection } from './InteractiveSection';
-import { getServersURL } from './OpenAPIServerURL';
-import { OpenAPIContextProps } from './types';
-import { noReference } from './utils';
-import { stringifyOpenAPI } from './stringifyOpenAPI';
+import type { OpenAPIV3 } from '@gitbook/openapi-parser';
+import {
+    OpenAPIMediaTypeExamplesBody,
+    OpenAPIMediaTypeExamplesSelector,
+} from './OpenAPICodeSampleInteractive';
 import { OpenAPITabs, OpenAPITabsList, OpenAPITabsPanels } from './OpenAPITabs';
+import { ScalarApiButton } from './ScalarApiButton';
+import { StaticSection } from './StaticSection';
+import { type CodeSampleGenerator, codeSampleGenerators } from './code-samples';
+import { generateMediaTypeExamples, generateSchemaExample } from './generateSchemaExample';
+import { stringifyOpenAPI } from './stringifyOpenAPI';
+import type { OpenAPIContextProps, OpenAPIOperationData } from './types';
+import { getDefaultServerURL } from './util/server';
+import { checkIsReference, createStateKey } from './utils';
+
+const CUSTOM_CODE_SAMPLES_KEYS = ['x-custom-examples', 'x-code-samples', 'x-codeSamples'] as const;
 
 /**
  * Display code samples to execute the operation.
@@ -18,20 +23,56 @@ export function OpenAPICodeSample(props: {
     data: OpenAPIOperationData;
     context: OpenAPIContextProps;
 }) {
+    const { data } = props;
+
+    // If code samples are disabled at operation level, we don't display the code samples.
+    if (data.operation['x-codeSamples'] === false) {
+        return null;
+    }
+
+    const customCodeSamples = getCustomCodeSamples(props);
+
+    // If code samples are disabled at the top-level and not custom code samples are defined,
+    // we don't display the code samples.
+    if (data['x-codeSamples'] === false && !customCodeSamples) {
+        return null;
+    }
+
+    const samples = customCodeSamples ?? generateCodeSamples(props);
+
+    if (samples.length === 0) {
+        return null;
+    }
+
+    return (
+        <OpenAPITabs stateKey={createStateKey('codesample')} items={samples}>
+            <StaticSection header={<OpenAPITabsList />} className="openapi-codesample">
+                <OpenAPITabsPanels />
+            </StaticSection>
+        </OpenAPITabs>
+    );
+}
+
+/**
+ * Generate code samples for the operation.
+ */
+function generateCodeSamples(props: {
+    data: OpenAPIOperationData;
+    context: OpenAPIContextProps;
+}) {
     const { data, context } = props;
 
     const searchParams = new URLSearchParams();
     const headersObject: { [k: string]: string } = {};
 
-    data.operation.parameters?.forEach((rawParam) => {
-        const param = noReference(rawParam);
+    data.operation.parameters?.forEach((param) => {
         if (!param) {
             return;
         }
 
         if (param.in === 'header' && param.required) {
             const example = param.schema
-                ? generateSchemaExample(noReference(param.schema))
+                ? generateSchemaExample(param.schema, { mode: 'write' })
                 : undefined;
             if (example !== undefined && param.name) {
                 headersObject[param.name] =
@@ -39,56 +80,164 @@ export function OpenAPICodeSample(props: {
             }
         } else if (param.in === 'query' && param.required) {
             const example = param.schema
-                ? generateSchemaExample(noReference(param.schema))
+                ? generateSchemaExample(param.schema, { mode: 'write' })
                 : undefined;
             if (example !== undefined && param.name) {
                 searchParams.append(
                     param.name,
-                    String(Array.isArray(example) ? example[0] : example),
+                    String(Array.isArray(example) ? example[0] : example)
                 );
             }
         }
     });
 
-    const requestBody = noReference(data.operation.requestBody);
-    const requestBodyContentEntries = requestBody?.content
-        ? Object.entries(requestBody.content)
+    const requestBody = !checkIsReference(data.operation.requestBody)
+        ? data.operation.requestBody
         : undefined;
-    const requestBodyContent = requestBodyContentEntries?.[0];
 
-    const input: CodeSampleInput = {
-        url:
-            getServersURL(data.servers) +
-            data.path +
-            (searchParams.size ? `?${searchParams.toString()}` : ''),
-        method: data.method,
-        body: requestBodyContent
-            ? generateMediaTypeExample(requestBodyContent[1], { onlyRequired: true })
-            : undefined,
-        headers: {
-            ...getSecurityHeaders(data.securities),
-            ...headersObject,
-            ...(requestBodyContent
-                ? {
-                      'Content-Type': requestBodyContent[0],
-                  }
-                : undefined),
-        },
+    const url =
+        getDefaultServerURL(data.servers) +
+        data.path +
+        (searchParams.size ? `?${searchParams.toString()}` : '');
+
+    const genericHeaders = {
+        ...getSecurityHeaders(data.securities),
+        ...headersObject,
     };
 
-    const autoCodeSamples = codeSampleGenerators.map((generator) => ({
-        key: `default-${generator.id}`,
-        label: generator.label,
-        body: <context.CodeBlock code={generator.generate(input)} syntax={generator.syntax} />,
-    }));
+    const mediaTypeRendererFactories = Object.entries(requestBody?.content ?? {}).map(
+        ([mediaType, mediaTypeObject]) => {
+            return (generator: CodeSampleGenerator) => {
+                const mediaTypeHeaders = {
+                    ...genericHeaders,
+                    'Content-Type': mediaType,
+                };
+                return {
+                    mediaType,
+                    element: context.renderCodeBlock({
+                        code: generator.generate({
+                            url,
+                            method: data.method,
+                            body: undefined,
+                            headers: mediaTypeHeaders,
+                        }),
+                        syntax: generator.syntax,
+                    }),
+                    examples: generateMediaTypeExamples(mediaTypeObject, {
+                        mode: 'write',
+                    }).map((example) => ({
+                        example,
+                        element: context.renderCodeBlock({
+                            code: generator.generate({
+                                url,
+                                method: data.method,
+                                body: example.value,
+                                headers: mediaTypeHeaders,
+                            }),
+                            syntax: generator.syntax,
+                        }),
+                    })),
+                } satisfies MediaTypeRenderer;
+            };
+        }
+    );
 
-    // Use custom samples if defined
+    return codeSampleGenerators.map((generator) => {
+        if (mediaTypeRendererFactories.length > 0) {
+            const renderers = mediaTypeRendererFactories.map((generate) => generate(generator));
+            return {
+                key: `default-${generator.id}`,
+                label: generator.label,
+                body: (
+                    <OpenAPIMediaTypeExamplesBody
+                        method={data.method}
+                        path={data.path}
+                        renderers={renderers}
+                    />
+                ),
+                footer: (
+                    <OpenAPICodeSampleFooter renderers={renderers} data={data} context={context} />
+                ),
+            };
+        }
+        return {
+            key: `default-${generator.id}`,
+            label: generator.label,
+            body: context.renderCodeBlock({
+                code: generator.generate({
+                    url,
+                    method: data.method,
+                    body: undefined,
+                    headers: genericHeaders,
+                }),
+                syntax: generator.syntax,
+            }),
+            footer: <OpenAPICodeSampleFooter data={data} renderers={[]} context={context} />,
+        };
+    });
+}
+
+export interface MediaTypeRenderer {
+    mediaType: string;
+    element: React.ReactNode;
+    examples: Array<{
+        example: OpenAPIV3.ExampleObject;
+        element: React.ReactNode;
+    }>;
+}
+
+function OpenAPICodeSampleFooter(props: {
+    data: OpenAPIOperationData;
+    renderers: MediaTypeRenderer[];
+    context: OpenAPIContextProps;
+}) {
+    const { data, context, renderers } = props;
+    const { method, path } = data;
+    const { specUrl } = context;
+    const hideTryItPanel = data['x-hideTryItPanel'] || data.operation['x-hideTryItPanel'];
+    const hasMultipleMediaTypes =
+        renderers.length > 1 || renderers.some((renderer) => renderer.examples.length > 0);
+
+    if (hideTryItPanel && !hasMultipleMediaTypes) {
+        return null;
+    }
+
+    if (!validateHttpMethod(method)) {
+        return null;
+    }
+
+    return (
+        <div className="openapi-codesample-footer">
+            {hasMultipleMediaTypes ? (
+                <OpenAPIMediaTypeExamplesSelector
+                    method={data.method}
+                    path={data.path}
+                    renderers={renderers}
+                />
+            ) : (
+                <span />
+            )}
+            {!hideTryItPanel && <ScalarApiButton method={method} path={path} specUrl={specUrl} />}
+        </div>
+    );
+}
+
+/**
+ * Get custom code samples for the operation.
+ */
+function getCustomCodeSamples(props: {
+    data: OpenAPIOperationData;
+    context: OpenAPIContextProps;
+}) {
+    const { data, context } = props;
+
     let customCodeSamples: null | Array<{
         key: string;
         label: string;
         body: React.ReactNode;
     }> = null;
-    (['x-custom-examples', 'x-code-samples', 'x-codeSamples'] as const).forEach((key) => {
+
+    CUSTOM_CODE_SAMPLES_KEYS.forEach((key) => {
         const customSamples = data.operation[key];
         if (customSamples && Array.isArray(customSamples)) {
             customCodeSamples = customSamples
@@ -99,31 +248,21 @@ export function OpenAPICodeSample(props: {
                         typeof sample.lang === 'string'
                     );
                 })
-                .map((sample) => ({
-                    key: `redocly-${sample.lang}`,
+                .map((sample, index) => ({
+                    key: `custom-sample-${sample.lang}-${index}`,
                     label: sample.label,
-                    body: <context.CodeBlock code={sample.source} syntax={sample.lang} />,
+                    body: context.renderCodeBlock({
+                        code: sample.source,
+                        syntax: sample.lang,
+                    }),
+                    footer: (
+                        <OpenAPICodeSampleFooter renderers={[]} data={data} context={context} />
+                    ),
                 }));
         }
     });
 
-    // Code samples can be disabled at the top-level or at the operation level
-    // If code samples are defined at the operation level, it will override the top-level setting
-    const codeSamplesDisabled =
-        data['x-codeSamples'] === false || data.operation['x-codeSamples'] === false;
-    const samples = customCodeSamples ?? (!codeSamplesDisabled ? autoCodeSamples : []);
-
-    if (samples.length === 0) {
-        return null;
-    }
-
-    return (
-        <OpenAPITabs items={samples}>
-            <InteractiveSection header={<OpenAPITabsList />} className="openapi-codesample">
-                <OpenAPITabsPanels />
-            </InteractiveSection>
-        </OpenAPITabs>
-    );
+    return customCodeSamples;
 }
 
 function getSecurityHeaders(securities: OpenAPIOperationData['securities']): {
@@ -150,7 +289,7 @@ function getSecurityHeaders(securities: OpenAPIOperationData['securities']): {
             }
 
             return {
-                Authorization: scheme + ' ' + format,
+                Authorization: `${scheme} ${format}`,
             };
         }
         case 'apiKey': {
@@ -166,4 +305,8 @@ function getSecurityHeaders(securities: OpenAPIOperationData['securities']): {
             return {};
         }
     }
+}
+
+function validateHttpMethod(method: string): method is OpenAPIV3.HttpMethods {
+    return ['get', 'post', 'put', 'delete', 'patch', 'head', 'options', 'trace'].includes(method);
 }

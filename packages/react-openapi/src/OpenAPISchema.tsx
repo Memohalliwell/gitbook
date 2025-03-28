@@ -1,154 +1,182 @@
-import classNames from 'classnames';
-import { OpenAPIV3 } from '@scalar/openapi-types';
-import React, { useId } from 'react';
+'use client';
+// This component does not use any client feature but we don't want to
+// render it server-side because it has recursion.
 
-import { InteractiveSection } from './InteractiveSection';
+import type { OpenAPIV3 } from '@gitbook/openapi-parser';
+import { useId } from 'react';
+
+import clsx from 'clsx';
 import { Markdown } from './Markdown';
-import { OpenAPIClientContext } from './types';
-import { checkIsReference, noReference } from './utils';
-import { stringifyOpenAPI } from './stringifyOpenAPI';
-import { OpenAPISchemaName } from './OpenAPISchemaName';
 import { OpenAPIDisclosure } from './OpenAPIDisclosure';
+import { OpenAPISchemaName } from './OpenAPISchemaName';
+import { retrocycle } from './decycle';
+import type { OpenAPIClientContext } from './types';
+import { checkIsReference, resolveDescription, resolveFirstExample } from './utils';
 
 type CircularRefsIds = Map<OpenAPIV3.SchemaObject, string>;
 
 export interface OpenAPISchemaPropertyEntry {
-    propertyName?: string;
-    required?: boolean;
+    propertyName?: string | undefined;
+    required?: boolean | undefined;
     schema: OpenAPIV3.SchemaObject;
 }
 
 /**
  * Render a property of an OpenAPI schema.
  */
-export function OpenAPISchemaProperty(
-    props: OpenAPISchemaPropertyEntry & {
-        /** Set of objects already observed as parents */
-        circularRefs?: CircularRefsIds;
-        context: OpenAPIClientContext;
-        className?: string;
-    },
-) {
-    const {
-        schema,
-        circularRefs: parentCircularRefs = new Map<OpenAPIV3.SchemaObject, string>(),
-        context,
-        className,
-    } = props;
+function OpenAPISchemaProperty(props: {
+    property: OpenAPISchemaPropertyEntry;
+    context: OpenAPIClientContext;
+    circularRefs: CircularRefsIds;
+    className?: string;
+}) {
+    const { circularRefs: parentCircularRefs, context, className, property } = props;
+
+    const { schema } = property;
 
     const id = useId();
 
-    const parentCircularRef = parentCircularRefs.get(schema);
-    const circularRefs = new Map(parentCircularRefs).set(schema, id);
-
-    // Avoid recursing infinitely, and instead render a link to the parent schema
-    const properties = parentCircularRef ? null : getSchemaProperties(schema);
-    const alternatives = parentCircularRef
-        ? null
-        : getSchemaAlternatives(schema, new Set(circularRefs.keys()));
-
-    if ((properties && !!properties.length) || schema.type === 'object') {
-        return (
-            <InteractiveSection id={id} className={classNames('openapi-schema', className)}>
-                <OpenAPISchemaPresentation {...props} />
-                <OpenAPIDisclosure context={context}>
-                    {properties && properties.length > 0 ? (
-                        <OpenAPISchemaProperties
-                            properties={properties}
-                            circularRefs={circularRefs}
-                            context={context}
-                        />
-                    ) : null}
-                </OpenAPIDisclosure>
-            </InteractiveSection>
-        );
-    }
-
-    if (alternatives?.[0]?.length) {
-        return (
-            <InteractiveSection id={id} className={classNames('openapi-schema', className)}>
-                <OpenAPISchemaPresentation {...props} />
-                {alternatives[0].map((alternative, index) => (
-                    <OpenAPISchemaAlternative
-                        schema={alternative}
-                        circularRefs={circularRefs}
-                        context={context}
-                    />
-                ))}
-            </InteractiveSection>
-        );
-    }
-
     return (
-        <InteractiveSection id={id} className={classNames('openapi-schema', className)}>
-            <OpenAPISchemaPresentation {...props} />
-            {(properties && properties.length > 0) ||
-            (schema.enum && schema.enum.length > 0) ||
-            parentCircularRef ? (
-                <>
-                    {properties?.length ? (
-                        <OpenAPISchemaProperties
-                            properties={properties}
+        <div id={id} className={clsx('openapi-schema', className)}>
+            <OpenAPISchemaPresentation property={property} />
+            {(() => {
+                const circularRefId = parentCircularRefs.get(schema);
+                // Avoid recursing infinitely, and instead render a link to the parent schema
+                if (circularRefId) {
+                    return <OpenAPISchemaCircularRef id={circularRefId} schema={schema} />;
+                }
+
+                const circularRefs = new Map(parentCircularRefs);
+                circularRefs.set(schema, id);
+
+                const properties = getSchemaProperties(schema);
+                if (properties?.length) {
+                    return (
+                        <OpenAPIDisclosure context={context} label={getDisclosureLabel(schema)}>
+                            <OpenAPISchemaProperties
+                                properties={properties}
+                                circularRefs={circularRefs}
+                                context={context}
+                            />
+                        </OpenAPIDisclosure>
+                    );
+                }
+
+                const ancestors = new Set(circularRefs.keys());
+                const alternatives = getSchemaAlternatives(schema, ancestors);
+
+                if (alternatives) {
+                    return alternatives.map((schema, index) => (
+                        <OpenAPISchemaAlternative
+                            key={index}
+                            schema={schema}
                             circularRefs={circularRefs}
                             context={context}
                         />
-                    ) : null}
-                    {parentCircularRef ? (
-                        <OpenAPISchemaCircularRef id={parentCircularRef} schema={schema} />
-                    ) : null}
-                </>
-            ) : null}
-        </InteractiveSection>
+                    ));
+                }
+
+                return null;
+            })()}
+        </div>
     );
 }
 
 /**
  * Render a set of properties of an OpenAPI schema.
  */
-export function OpenAPISchemaProperties(props: {
+function OpenAPISchemaProperties(props: {
     id?: string;
     properties: OpenAPISchemaPropertyEntry[];
     circularRefs?: CircularRefsIds;
     context: OpenAPIClientContext;
 }) {
-    const { id, properties, circularRefs, context } = props;
-
-    if (!properties.length) {
-        return null;
-    }
+    const {
+        id,
+        properties,
+        circularRefs = new Map<OpenAPIV3.SchemaObject, string>(),
+        context,
+    } = props;
 
     return (
-        <div id={id} className={classNames('openapi-schema-properties')}>
-            {properties.map((property) => (
-                <OpenAPISchemaProperty
-                    key={property.propertyName}
-                    circularRefs={circularRefs}
-                    {...property}
-                    context={context}
-                />
-            ))}
+        <div id={id} className="openapi-schema-properties">
+            {properties.map((property, index) => {
+                return (
+                    <OpenAPISchemaProperty
+                        key={index}
+                        circularRefs={circularRefs}
+                        property={property}
+                        context={context}
+                    />
+                );
+            })}
         </div>
+    );
+}
+
+export function OpenAPISchemaPropertiesFromServer(props: {
+    id?: string;
+    properties: string;
+    context: OpenAPIClientContext;
+}) {
+    return (
+        <OpenAPISchemaProperties
+            id={props.id}
+            properties={JSON.parse(props.properties, retrocycle())}
+            context={props.context}
+        />
     );
 }
 
 /**
  * Render a root schema (such as the request body or response body).
  */
-export function OpenAPIRootSchema(props: {
+function OpenAPIRootSchema(props: {
     schema: OpenAPIV3.SchemaObject;
     context: OpenAPIClientContext;
+    circularRefs?: CircularRefsIds;
 }) {
-    const { schema, context } = props;
+    const {
+        schema,
+        context,
+        circularRefs: parentCircularRefs = new Map<OpenAPIV3.SchemaObject, string>(),
+    } = props;
 
-    // Avoid recursing infinitely, and instead render a link to the parent schema
+    const id = useId();
     const properties = getSchemaProperties(schema);
 
-    if (properties && properties.length > 0) {
-        return <OpenAPISchemaProperties properties={properties} context={context} />;
+    if (properties?.length) {
+        const circularRefs = new Map(parentCircularRefs);
+        circularRefs.set(schema, id);
+
+        return (
+            <OpenAPISchemaProperties
+                properties={properties}
+                circularRefs={circularRefs}
+                context={context}
+            />
+        );
     }
 
     return (
-        <OpenAPISchemaProperty schema={schema} context={context} className="openapi-schema-root" />
+        <OpenAPISchemaProperty
+            className="openapi-schema-root"
+            property={{ schema }}
+            context={context}
+            circularRefs={parentCircularRefs}
+        />
+    );
+}
+
+export function OpenAPIRootSchemaFromServer(props: {
+    schema: string;
+    context: OpenAPIClientContext;
+}) {
+    return (
+        <OpenAPIRootSchema
+            schema={JSON.parse(props.schema, retrocycle())}
+            context={props.context}
+        />
     );
 }
 
@@ -159,22 +187,35 @@ export function OpenAPIRootSchema(props: {
  */
 function OpenAPISchemaAlternative(props: {
     schema: OpenAPIV3.SchemaObject;
-    circularRefs?: CircularRefsIds;
+    circularRefs: CircularRefsIds;
     context: OpenAPIClientContext;
 }) {
     const { schema, circularRefs, context } = props;
-    const id = useId();
-    const subProperties = getSchemaProperties(schema);
+
+    const description = resolveDescription(schema);
+    const properties = getSchemaProperties(schema);
 
     return (
-        <OpenAPIDisclosure context={context}>
-            <OpenAPISchemaProperties
-                id={id}
-                properties={subProperties ?? [{ schema }]}
-                circularRefs={subProperties ? new Map(circularRefs).set(schema, id) : circularRefs}
-                context={context}
-            />
-        </OpenAPIDisclosure>
+        <>
+            {description ? (
+                <Markdown source={description} className="openapi-schema-description" />
+            ) : null}
+            <OpenAPIDisclosure context={context} label={getDisclosureLabel(schema)}>
+                {properties?.length ? (
+                    <OpenAPISchemaProperties
+                        properties={properties}
+                        circularRefs={circularRefs}
+                        context={context}
+                    />
+                ) : (
+                    <OpenAPISchemaProperty
+                        property={{ schema }}
+                        circularRefs={circularRefs}
+                        context={context}
+                    />
+                )}
+            </OpenAPIDisclosure>
+        </>
     );
 }
 
@@ -195,7 +236,7 @@ function OpenAPISchemaCircularRef(props: { id: string; schema: OpenAPIV3.SchemaO
 /**
  * Render the enum value for a schema.
  */
-export function OpenAPISchemaEnum(props: { enumValues: any[] }) {
+function OpenAPISchemaEnum(props: { enumValues: any[] }) {
     const { enumValues } = props;
 
     return (
@@ -213,30 +254,26 @@ export function OpenAPISchemaEnum(props: { enumValues: any[] }) {
     );
 }
 
-export function OpenAPISchemaPresentation(props: OpenAPISchemaPropertyEntry) {
-    const { schema, propertyName, required } = props;
+/**
+ * Render the top row of a schema. e.g: name, type, and required status.
+ */
+function OpenAPISchemaPresentation(props: { property: OpenAPISchemaPropertyEntry }) {
+    const {
+        property: { schema, propertyName, required },
+    } = props;
 
-    const shouldDisplayExample = (schema: OpenAPIV3.SchemaObject): boolean => {
-        return (
-            typeof schema.example === 'string' ||
-            typeof schema.example === 'number' ||
-            typeof schema.example === 'boolean' ||
-            (Array.isArray(schema.example) && schema.example.length > 0) ||
-            (typeof schema.example === 'object' &&
-                schema.example !== null &&
-                Object.keys(schema.example).length > 0)
-        );
-    };
+    const description = resolveDescription(schema);
+    const example = resolveFirstExample(schema);
 
     return (
-        <div className={classNames('openapi-schema-presentation')}>
+        <div className="openapi-schema-presentation">
             <OpenAPISchemaName
+                schema={schema}
                 type={getSchemaTitle(schema)}
                 propertyName={propertyName}
                 required={required}
-                deprecated={schema.deprecated}
             />
-            {schema['x-deprecated-sunset'] ? (
+            {typeof schema['x-deprecated-sunset'] === 'string' ? (
                 <div className="openapi-deprecated-sunset openapi-schema-description openapi-markdown">
                     Sunset date:{' '}
                     <span className="openapi-deprecated-sunset-date">
@@ -244,17 +281,12 @@ export function OpenAPISchemaPresentation(props: OpenAPISchemaPropertyEntry) {
                     </span>
                 </div>
             ) : null}
-            {schema.description ? (
-                <Markdown source={schema.description} className="openapi-schema-description" />
+            {description ? (
+                <Markdown source={description} className="openapi-schema-description" />
             ) : null}
-            {shouldDisplayExample(schema) ? (
+            {typeof example === 'string' ? (
                 <div className="openapi-schema-example">
-                    Example:{' '}
-                    <code>
-                        {typeof schema.example === 'string'
-                            ? schema.example
-                            : stringifyOpenAPI(schema.example)}
-                    </code>
+                    Example: <code>{example}</code>
                 </div>
             ) : null}
             {schema.pattern ? (
@@ -273,42 +305,36 @@ export function OpenAPISchemaPresentation(props: OpenAPISchemaPropertyEntry) {
  * Get the sub-properties of a schema.
  */
 function getSchemaProperties(schema: OpenAPIV3.SchemaObject): null | OpenAPISchemaPropertyEntry[] {
-    if (schema.allOf) {
-        return schema.allOf.reduce((acc, subSchema) => {
-            const properties = getSchemaProperties(noReference(subSchema)) ?? [
-                {
-                    schema: noReference(subSchema),
-                },
-            ];
-            return [...acc, ...properties];
-        }, [] as OpenAPISchemaPropertyEntry[]);
-    }
-
     // check array AND schema.items as this is sometimes null despite what the type indicates
-    if (schema.type === 'array' && !!schema.items) {
-        const items = noReference(schema.items);
+    if (schema.type === 'array' && schema.items && !checkIsReference(schema.items)) {
+        const items = schema.items;
         const itemProperties = getSchemaProperties(items);
         if (itemProperties) {
             return itemProperties;
         }
 
-        return [
-            {
-                propertyName: 'items',
-                schema: items,
-            },
-        ];
+        // If the items are a primitive type, we don't need to display them
+        if (
+            (items.type === 'string' ||
+                items.type === 'number' ||
+                items.type === 'boolean' ||
+                items.type === 'integer') &&
+            !items.enum
+        ) {
+            return null;
+        }
+
+        return [{ propertyName: 'items', schema: items }];
     }
 
     if (schema.type === 'object' || schema.properties) {
         const result: OpenAPISchemaPropertyEntry[] = [];
 
         if (schema.properties) {
-            Object.entries(schema.properties).forEach(([propertyName, rawPropertySchema]) => {
-                const isReference = checkIsReference(rawPropertySchema);
-                const propertySchema: OpenAPIV3.SchemaObject = isReference
-                    ? { propertyName }
-                    : rawPropertySchema;
+            Object.entries(schema.properties).forEach(([propertyName, propertySchema]) => {
+                if (checkIsReference(propertySchema)) {
+                    return;
+                }
 
                 result.push({
                     propertyName,
@@ -320,12 +346,10 @@ function getSchemaProperties(schema: OpenAPIV3.SchemaObject): null | OpenAPISche
             });
         }
 
-        if (schema.additionalProperties) {
-            const additionalProperties = noReference(schema.additionalProperties);
-
+        if (schema.additionalProperties && !checkIsReference(schema.additionalProperties)) {
             result.push({
                 propertyName: 'Other properties',
-                schema: additionalProperties === true ? {} : additionalProperties,
+                schema: schema.additionalProperties === true ? {} : schema.additionalProperties,
             });
         }
 
@@ -335,89 +359,84 @@ function getSchemaProperties(schema: OpenAPIV3.SchemaObject): null | OpenAPISche
     return null;
 }
 
+type AlternativeType = 'oneOf' | 'allOf' | 'anyOf';
+
 /**
  * Get the alternatives to display for a schema.
  */
 export function getSchemaAlternatives(
     schema: OpenAPIV3.SchemaObject,
-    ancestors: Set<OpenAPIV3.SchemaObject> = new Set(),
-): null | [OpenAPIV3.SchemaObject[], OpenAPIV3.DiscriminatorObject | undefined] {
-    const downAncestors = new Set(ancestors).add(schema);
+    ancestors: Set<OpenAPIV3.SchemaObject> = new Set()
+): OpenAPIV3.SchemaObject[] | null {
+    const alternatives:
+        | [AlternativeType, (OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject)[]]
+        | null = (() => {
+        if (schema.anyOf) {
+            return ['anyOf', schema.anyOf];
+        }
 
-    if (schema.anyOf) {
-        return [
-            flattenAlternatives('anyOf', schema.anyOf.map(noReference), downAncestors),
-            noReference(schema.discriminator),
-        ];
-    }
+        if (schema.oneOf) {
+            return ['oneOf', schema.oneOf];
+        }
 
-    if (schema.oneOf) {
-        return [
-            flattenAlternatives('oneOf', schema.oneOf.map(noReference), downAncestors),
-            noReference(schema.discriminator),
-        ];
-    }
+        if (schema.allOf) {
+            return ['allOf', schema.allOf];
+        }
 
-    if (schema.allOf) {
-        // allOf is managed in `getSchemaProperties`
+        return null;
+    })();
+
+    if (!alternatives) {
         return null;
     }
 
-    return null;
+    const [type, schemas] = alternatives;
+    return flattenAlternatives(type, schemas, new Set(ancestors).add(schema));
 }
 
 function flattenAlternatives(
-    alternativeType: 'oneOf' | 'allOf' | 'anyOf',
-    alternatives: OpenAPIV3.SchemaObject[],
-    ancestors: Set<OpenAPIV3.SchemaObject>,
+    alternativeType: AlternativeType,
+    schemasOrRefs: (OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject)[],
+    ancestors: Set<OpenAPIV3.SchemaObject>
 ): OpenAPIV3.SchemaObject[] {
-    return alternatives.reduce((acc, alternative) => {
-        if (!!alternative[alternativeType] && !ancestors.has(alternative)) {
-            return [...acc, ...(getSchemaAlternatives(alternative, ancestors)?.[0] || [])];
+    return schemasOrRefs.reduce<OpenAPIV3.SchemaObject[]>((acc, schemaOrRef) => {
+        if (checkIsReference(schemaOrRef)) {
+            return acc;
         }
 
-        return [...acc, alternative];
-    }, [] as OpenAPIV3.SchemaObject[]);
+        if (schemaOrRef[alternativeType] && !ancestors.has(schemaOrRef)) {
+            const schemas = getSchemaAlternatives(schemaOrRef, ancestors);
+            if (schemas) {
+                acc.push(...schemas);
+            }
+            return acc;
+        }
+
+        acc.push(schemaOrRef);
+        return acc;
+    }, []);
 }
 
-export function getSchemaTitle(
-    schema: OpenAPIV3.SchemaObject,
-
-    /** If the title is inferred in a oneOf with discriminator, we can use it to optimize the title */
-    discriminator?: OpenAPIV3.DiscriminatorObject,
-): string {
-    if (schema.title) {
-        // If the schema has a title, use it
-        return schema.title;
-    }
-
-    // Try using the discriminator
-    if (discriminator?.propertyName && schema.properties) {
-        const discriminatorProperty = noReference(schema.properties[discriminator.propertyName]);
-        if (discriminatorProperty) {
-            if (discriminatorProperty.enum) {
-                return discriminatorProperty.enum.map((value) => value.toString()).join(' | ');
-            }
-        }
-    }
-
+function getSchemaTitle(schema: OpenAPIV3.SchemaObject): string {
     // Otherwise try to infer a nice title
     let type = 'any';
 
     if (schema.enum) {
-        type = 'enum';
+        type = `${schema.type} · enum`;
         // check array AND schema.items as this is sometimes null despite what the type indicates
     } else if (schema.type === 'array' && !!schema.items) {
-        type = `${getSchemaTitle(noReference(schema.items))}[]`;
+        type = `${getSchemaTitle(schema.items)}[]`;
     } else if (Array.isArray(schema.type)) {
         type = schema.type.join(' | ');
     } else if (schema.type || schema.properties) {
         type = schema.type ?? 'object';
 
         if (schema.format) {
-            type += ` ${schema.format}`;
+            type += ` · ${schema.format}`;
         }
-    } else if ('anyOf' in schema) {
+    }
+
+    if ('anyOf' in schema) {
         type = 'any of';
     } else if ('oneOf' in schema) {
         type = 'one of';
@@ -427,9 +446,22 @@ export function getSchemaTitle(
         type = 'not';
     }
 
-    if (schema.nullable) {
-        type = `nullable ${type}`;
+    return type;
+}
+
+function getDisclosureLabel(schema: OpenAPIV3.SchemaObject): string {
+    if (schema.type === 'array' && !!schema.items) {
+        if (schema.items.oneOf) {
+            return 'available items';
+        }
+
+        // Fallback to "child attributes" for enums and objects
+        if (schema.items.enum || schema.items.type === 'object') {
+            return 'child attributes';
+        }
+
+        return schema.items.title ?? schema.title ?? getSchemaTitle(schema.items);
     }
 
-    return type;
+    return schema.title || 'child attributes';
 }

@@ -1,22 +1,23 @@
 import {
-    CustomizationContentLink,
-    CustomizationFooterGroup,
+    type CustomizationContentLink,
+    type CustomizationFooterGroup,
     SiteInsightsLinkPosition,
 } from '@gitbook/api';
+import type { GitBookAnyContext } from '@v2/lib/context';
 
-import { ContentRefContext, resolveContentRef } from '@/lib/references';
+import { resolveContentRef } from '@/lib/references';
 import { tcls } from '@/lib/tailwind';
 
 import { Link } from '../primitives';
 
 export function FooterLinksGroup(props: {
     group: CustomizationFooterGroup;
-    context: ContentRefContext;
+    context: GitBookAnyContext;
 }) {
     const { group, context } = props;
 
     return (
-        <nav className="text-sm flex flex-col gap-4">
+        <nav className="flex flex-col gap-4 text-sm">
             <h4 className="font-semibold">{group.title}</h4>
             <ul className="flex flex-col items-start gap-4">
                 {group.links.map((link, index) => {
@@ -31,7 +32,7 @@ export function FooterLinksGroup(props: {
     );
 }
 
-async function FooterLink(props: { link: CustomizationContentLink; context: ContentRefContext }) {
+async function FooterLink(props: { link: CustomizationContentLink; context: GitBookAnyContext }) {
     const { link, context } = props;
     const resolved = await resolveContentRef(link.to, context);
 
@@ -45,11 +46,17 @@ async function FooterLink(props: { link: CustomizationContentLink; context: Cont
             className={tcls(
                 'font-normal',
                 'text-tint',
-                'hover:text-primary',
-                'tint:hover:text-tint-strong',
+                'links-default:hover:text-primary',
+                'links-default:tint:hover:text-tint-strong',
+
                 'contrast-more:underline',
                 'contrast-more:text-tint-strong',
                 'underline-offset-2',
+
+                'links-accent:hover:underline',
+                'links-accent:underline-offset-4',
+                'links-accent:decoration-primary-subtle',
+                'links-accent:decoration-[3px]'
             )}
             insights={{
                 type: 'link_click',

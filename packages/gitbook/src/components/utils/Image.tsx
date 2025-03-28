@@ -1,11 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
+import { type ImageResizer, checkIsHttpURL } from '@v2/lib/images';
 import ReactDOM from 'react-dom';
 
-import { checkIsHttpURL, getImageSize, getResizedImageURLFactory } from '@/lib/images';
-import { ClassValue, tcls } from '@/lib/tailwind';
+import { type ClassValue, tcls } from '@/lib/tailwind';
 
-import { PolymorphicComponentProp } from './types';
 import { ZoomImage } from './ZoomImage';
+import type { PolymorphicComponentProp } from './types';
 
 export type ImageSize = { width: number; height: number };
 
@@ -51,7 +51,7 @@ interface ImageCommonProps {
     /**
      * Whether to resize the image.
      */
-    resize?: boolean;
+    resize: ImageResizer | false | undefined;
 
     /**
      * Whether to allow the user to zoom on the image.
@@ -114,7 +114,7 @@ export function Image(
                 dark?: ImageSource | null;
             };
         } & ImageCommonProps
-    >,
+    >
 ) {
     const { sources, style, inline = false, ...rest } = props;
 
@@ -128,7 +128,7 @@ export function Image(
                     rest.className,
                     inline ? 'inline' : 'block',
                     sources.dark ? 'dark:hidden' : null,
-                    style,
+                    style
                 )}
             />
             {sources.dark ? (
@@ -143,7 +143,7 @@ export function Image(
                         rest.className,
                         'hidden',
                         inline ? 'dark:inline' : 'dark:block',
-                        style,
+                        style
                     )}
                 />
             ) : null}
@@ -157,7 +157,7 @@ function ImagePicture(
         {
             source: ImageSource;
         } & ImageCommonProps
-    >,
+    >
 ) {
     const { source, ...rest } = props;
     const { size } = source;
@@ -175,12 +175,12 @@ async function ImagePictureUnsized(
         {
             source: ImageSource;
         } & ImageCommonProps
-    >,
+    >
 ) {
-    const { source, ...rest } = props;
+    const { source, resize, ...rest } = props;
 
-    const size = await getImageSize(source.src);
-    return <ImagePictureSized {...rest} source={{ ...source, size }} />;
+    const size = resize ? await resize.getImageSize(source.src, { dpr: 2 }) : null;
+    return <ImagePictureSized {...rest} resize={resize} source={{ ...source, size }} />;
 }
 
 async function ImagePictureSized(
@@ -189,7 +189,7 @@ async function ImagePictureSized(
         {
             source: ImageSourceSized;
         } & ImageCommonProps
-    >,
+    >
 ) {
     const {
         source,
@@ -200,7 +200,7 @@ async function ImagePictureSized(
         priority = 'normal',
         inline = false,
         zoom = false,
-        resize = true,
+        resize = false,
         preload = false,
         inlineStyle,
         ...rest
@@ -247,7 +247,7 @@ async function getImageAttributes(params: {
     sizes: ImageResponsiveSize[];
     source: ImageSourceSized;
     quality: number;
-    resize: boolean;
+    resize: ImageResizer | false;
 }): Promise<{
     src: string;
     srcSet?: string;
@@ -258,7 +258,7 @@ async function getImageAttributes(params: {
     const { sizes, source, quality, resize } = params;
     let src = source.src;
 
-    const getURL = resize ? await getResizedImageURLFactory(source.src) : null;
+    const getURL = resize ? resize.getResizedImageURL(source.src) : null;
 
     if (!getURL) {
         return {
@@ -271,9 +271,9 @@ async function getImageAttributes(params: {
     const sourceSizes: string[] = [];
     let defaultSize: ImageResponsiveSize | undefined;
 
-    sizes.map((size) => {
+    for (const size of sizes) {
         for (let dpr = 1; dpr <= MAX_DPR; dpr++) {
-            const resizedURL = getURL({
+            const resizedURL = await getURL({
                 width: size.width,
                 quality,
                 dpr,
@@ -291,7 +291,7 @@ async function getImageAttributes(params: {
         if (size.media) {
             sourceSizes.push(`${size.media} ${size.width}px`);
         }
-    });
+    }
 
     // Push the default size at the end.
     if (defaultSize) {

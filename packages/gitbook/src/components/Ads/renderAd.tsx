@@ -1,13 +1,17 @@
 'use server';
 
-import { SiteInsightsAd, SiteInsightsAdPlacement } from '@gitbook/api';
+import type { SiteInsightsAd, SiteInsightsAdPlacement } from '@gitbook/api';
 import { headers } from 'next/headers';
 
+import { getV1BaseContext } from '@/lib/v1';
+
+import { isV2 } from '@/lib/v2';
+import { getServerActionBaseContext } from '@v2/lib/server-actions';
 import { AdClassicRendering } from './AdClassicRendering';
 import { AdCoverRendering } from './AdCoverRendering';
 import { AdPixels } from './AdPixels';
 import adRainbow from './assets/ad-rainbow.svg';
-import { AdItem, AdsResponse } from './types';
+import type { AdItem, AdsResponse } from './types';
 
 type FetchAdOptions = FetchLiveAdOptions | FetchPlaceholderAdOptions;
 
@@ -39,8 +43,9 @@ interface FetchPlaceholderAdOptions {
  * and properly access user-agent and IP.
  */
 export async function renderAd(options: FetchAdOptions) {
-    const mode = options.source === 'live' ? options.mode : 'classic';
+    const context = isV2() ? await getServerActionBaseContext() : await getV1BaseContext();
 
+    const mode = options.source === 'live' ? options.mode : 'classic';
     const result = options.source === 'live' ? await fetchAd(options) : await getPlaceholderAd();
     if (!result || !result.ad.description || !result.ad.statlink) {
         return null;
@@ -61,9 +66,9 @@ export async function renderAd(options: FetchAdOptions) {
         children: (
             <>
                 {mode === 'classic' || !('callToAction' in ad) ? (
-                    <AdClassicRendering ad={ad} insightsAd={insightsAd} />
+                    <AdClassicRendering ad={ad} insightsAd={insightsAd} context={context} />
                 ) : (
-                    <AdCoverRendering ad={ad} insightsAd={insightsAd} />
+                    <AdCoverRendering ad={ad} insightsAd={insightsAd} context={context} />
                 )}
                 {ad.pixel ? <AdPixels rawPixel={ad.pixel} /> : null}
             </>

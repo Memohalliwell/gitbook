@@ -1,9 +1,9 @@
 'use client';
 
-import NextLink, { LinkProps as NextLinkProps } from 'next/link';
+import NextLink, { type LinkProps as NextLinkProps } from 'next/link';
 import React from 'react';
 
-import { useTrackEvent, TrackEventInput } from '../Insights';
+import { type TrackEventInput, useTrackEvent } from '../Insights';
 
 // Props from Next, which includes NextLinkProps and all the things anchor elements support.
 type BaseLinkProps = Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, keyof NextLinkProps> &
@@ -16,7 +16,8 @@ export type LinkInsightsProps = {
     insights?:
         | TrackEventInput<'ad_click'>
         | TrackEventInput<'link_click'>
-        | TrackEventInput<'trademark_click'>;
+        | TrackEventInput<'trademark_click'>
+        | TrackEventInput<'search_open_result'>;
 };
 
 export type LinkProps = Omit<BaseLinkProps, 'href'> &
@@ -31,7 +32,7 @@ export type LinkProps = Omit<BaseLinkProps, 'href'> &
  */
 export const Link = React.forwardRef(function Link(
     props: LinkProps,
-    ref: React.Ref<HTMLAnchorElement>,
+    ref: React.Ref<HTMLAnchorElement>
 ) {
     const { href, prefetch, children, insights, ...domProps } = props;
     const trackEvent = useTrackEvent();
@@ -45,6 +46,13 @@ export const Link = React.forwardRef(function Link(
             trackEvent(insights, undefined, {
                 immediate: isExternal,
             });
+        }
+
+        // When the page is embedded in an iframe, for security reasons other urls cannot be opened.
+        // In this case, we open the link in a new tab.
+        if (isExternal && window.self !== window.top) {
+            event.preventDefault();
+            window.open(href, '_blank');
         }
 
         domProps.onClick?.(event);

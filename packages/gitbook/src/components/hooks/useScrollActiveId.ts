@@ -8,15 +8,16 @@ export function useScrollActiveId(
     options: {
         rootMargin?: string;
         threshold?: number;
-    } = {},
+    } = {}
 ) {
     const { rootMargin, threshold = 0.5 } = options;
 
-    const [activeId, setActiveId] = React.useState<string | null>(null);
+    const [activeId, setActiveId] = React.useState<string>(ids[0]);
     const sectionsIntersectingMap = React.useRef<Map<string, boolean>>(new Map());
 
     React.useEffect(() => {
-        setActiveId(null);
+        const defaultActiveId = ids[0];
+        setActiveId((activeId) => (ids.indexOf(activeId) !== -1 ? activeId : defaultActiveId));
 
         if (typeof IntersectionObserver === 'undefined') {
             return;
@@ -33,7 +34,7 @@ export function useScrollActiveId(
                 if (sectionId) {
                     sectionsIntersectingMap.current.set(
                         sectionId,
-                        entry.isIntersecting && entry.intersectionRatio >= threshold,
+                        entry.isIntersecting && entry.intersectionRatio >= threshold
                     );
                 }
             });
@@ -42,7 +43,7 @@ export function useScrollActiveId(
              * Find the first section that is intersecting the viewport (is visible)
              */
             const firstActiveSection = Array.from(sectionsIntersectingMap.current.entries()).find(
-                ([, isIntersecting]) => isIntersecting,
+                ([, isIntersecting]) => isIntersecting
             );
 
             if (firstActiveSection) {
@@ -62,7 +63,7 @@ export function useScrollActiveId(
                     observer.observe(element);
                 }
             } catch (error) {
-                console.log(error);
+                console.error('Failed to observe section', error);
             }
         });
 

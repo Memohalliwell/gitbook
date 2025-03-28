@@ -1,13 +1,14 @@
 'use client';
 
 import type { DocumentBlockCode } from '@gitbook/api';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { useHasBeenInViewport } from '@/components/hooks/useHasBeenInViewport';
-
-import type { HighlightLine, RenderedInline } from './highlight';
+import { useInViewportListener } from '@/components/hooks/useInViewportListener';
+import { useScrollListener } from '@/components/hooks/useScrollListener';
+import { useDebounceCallback } from 'usehooks-ts';
 import type { BlockProps } from '../Block';
 import { CodeBlockRenderer } from './CodeBlockRenderer';
+import type { HighlightLine, RenderedInline } from './highlight';
 import { plainHighlight } from './plain-highlight';
 
 type ClientBlockProps = Pick<BlockProps<DocumentBlockCode>, 'block' | 'style'> & {
@@ -21,36 +22,82 @@ type ClientBlockProps = Pick<BlockProps<DocumentBlockCode>, 'block' | 'style'> &
 export function ClientCodeBlock(props: ClientBlockProps) {
     const { block, style, inlines } = props;
     const blockRef = useRef<HTMLDivElement>(null);
-    const [lines, setLines] = useState<HighlightLine[]>(() => plainHighlight(block, []));
+    const isInViewportRef = useRef(false);
+    const [isInViewport, setIsInViewport] = useState(false);
+    const plainLines = useMemo(() => plainHighlight(block, []), [block]);
+    const [lines, setLines] = useState<null | HighlightLine[]>(null);
 
     // Preload the highlighter when the block is mounted.
     useEffect(() => {
         import('./highlight').then(({ preloadHighlight }) => preloadHighlight(block));
     }, [block]);
 
-    // Check if the block is in the viewport to start highlighting it.
-    const hasBeenInViewport = useHasBeenInViewport(blockRef, {
-        rootMargin: '200px',
-    });
+    // When user scrolls, we need to wait for the scroll to finish before running the highlight
+    const isScrollingRef = useRef(false);
+    const onFinishScrolling = useDebounceCallback(() => {
+        isScrollingRef.current = false;
 
-    // Highlight the block when it's in the viewport.
+        // If the block is in the viewport after the scroll, we need to run the highlight
+        if (isInViewportRef.current) {
+            setIsInViewport(true);
+        }
+    }, 100);
+    useScrollListener(
+        () => {
+            isScrollingRef.current = true;
+            onFinishScrolling();
+        },
+        useRef(typeof window !== 'undefined' ? window : null)
+    );
+
+    // Detect when the block is in viewport
+    useInViewportListener(
+        blockRef,
+        (isInViewport, disconnect) => {
+            isInViewportRef.current = isInViewport;
+            if (isScrollingRef.current) {
+                // If the user is scrolling, we don't want to run the highlight
+                // because it will be run when the scroll is finished
+                return;
+            }
+
+            if (isInViewport) {
+                // Disconnect once in viewport
+                disconnect();
+                setIsInViewport(true);
+            }
+        },
+        { rootMargin: '200px' }
+    );
+
+    // When the block is visible or updated, we need to re-run the highlight
     useEffect(() => {
-        if (hasBeenInViewport) {
-            let canceled = false;
-            import('./highlight').then(({ highlight }) => {
-                // We use requestIdleCallback to avoid blocking the main thread
-                // when scrolling.
-                if (typeof requestIdleCallback === 'function') {
-                    requestIdleCallback(() => highlight(block, inlines).then(setLines));
-                } else {
-                    highlight(block, inlines).then(setLines);
-                }
-            });
+        if (isInViewport) {
+            // If the block is in viewport, we need to run the highlight
+            let cancelled = false;
+
+            if (typeof window !== 'undefined') {
+                import('./highlight').then(({ highlight }) => {
+                    highlight(block, inlines).then((lines) => {
+                        if (cancelled) {
+                            return;
+                        }
+
+                        setLines(lines);
+                    });
+                });
+            }
+
             return () => {
-                canceled = true;
+                cancelled = true;
             };
         }
-    }, [hasBeenInViewport, block, inlines]);
 
-    return <CodeBlockRenderer ref={blockRef} block={block} style={style} lines={lines} />;
+        // Otherwise if the block is not in viewport, we reset to the plain lines
+        setLines(null);
+    }, [isInViewport, block, inlines]);
+
+    return (
+        <CodeBlockRenderer ref={blockRef} block={block} style={style} lines={lines ?? plainLines} />
+    );
 }

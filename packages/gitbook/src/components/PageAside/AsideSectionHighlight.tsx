@@ -1,9 +1,8 @@
 'use client';
 
-import { Transition, motion, useReducedMotion } from 'framer-motion';
-import React from 'react';
+import { type Transition, motion, useReducedMotion } from 'framer-motion';
 
-import { ClassValue, tcls } from '@/lib/tailwind';
+import { type ClassValue, tcls } from '@/lib/tailwind';
 
 export function AsideSectionHighlight({
     transition,
@@ -19,7 +18,7 @@ export function AsideSectionHighlight({
             layout
             layoutId="sections-line"
             className={tcls([
-                'border-primary',
+                'border-primary-9',
                 'tint:border-primary-11',
                 'sidebar-list-line:border-l-2',
 
@@ -34,7 +33,8 @@ export function AsideSectionHighlight({
                 'sidebar-list-line:rounded-l-none',
 
                 'sidebar-list-pill:bg-primary',
-                '[html.tint.sidebar-list-pill_&]:bg-primary-hover',
+                '[html.theme-muted.sidebar-list-pill_&]:bg-primary-hover',
+                '[html.theme-gradient.sidebar-list-pill_&]:bg-primary-active',
 
                 'contrast-more:border',
                 'contrast-more:bg-primary',

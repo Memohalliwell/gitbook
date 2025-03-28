@@ -1,8 +1,8 @@
-import { JSONDocument, ContentRef } from '@gitbook/api';
+import type { JSONDocument } from '@gitbook/api';
+import type { GitBookAnyContext } from '@v2/lib/context';
 
 import { getNodeText } from './document';
-import { fetchOpenAPIBlock } from './openapi';
-import { ResolvedContentRef } from './references';
+import { resolveOpenAPIOperationBlock } from './openapi/resolveOpenAPIOperationBlock';
 
 export interface DocumentSection {
     id: string;
@@ -16,8 +16,8 @@ export interface DocumentSection {
  * Extract a list of sections from a document.
  */
 export async function getDocumentSections(
-    document: JSONDocument,
-    resolveContentRef: (ref: ContentRef) => Promise<ResolvedContentRef | null>,
+    context: GitBookAnyContext,
+    document: JSONDocument
 ): Promise<DocumentSection[]> {
     const sections: DocumentSection[] = [];
     let depth = 0;
@@ -37,13 +37,16 @@ export async function getDocumentSections(
             });
         }
 
-        if (block.type === 'swagger' && block.meta?.id) {
-            const { data: operation } = await fetchOpenAPIBlock(block, resolveContentRef);
+        if ((block.type === 'swagger' || block.type === 'openapi-operation') && block.meta?.id) {
+            const { data: operation } = await resolveOpenAPIOperationBlock({
+                block,
+                context,
+            });
             if (operation) {
                 sections.push({
                     id: block.meta.id,
                     tag: operation.method.toUpperCase(),
-                    title: operation.operation.summary ?? operation.path,
+                    title: operation.operation.summary || operation.path,
                     depth: 1,
                     deprecated: operation.operation.deprecated,
                 });

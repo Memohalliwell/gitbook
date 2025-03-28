@@ -21,7 +21,7 @@
     },
     "devDependencies": {
         "typescript": "^5.5.3",
-        "wrangler": "3.82.0"
+        "wrangler": "^3.112.0"
     },
     "scripts": {
         "generate": "wrangler types --experimental-include-runtime",
@@ -31,12 +31,5 @@
         "release": "wrangler deploy",
         "release:preview": "wrangler deploy && wrangler deploy --env preview"
     },
-    "files": [
-        "dist",
-        "src",
-        "bin",
-        "data",
-        "README.md",
-        "CHANGELOG.md"
-    ]
+    "files": ["dist", "src", "bin", "data", "README.md", "CHANGELOG.md"]
 }

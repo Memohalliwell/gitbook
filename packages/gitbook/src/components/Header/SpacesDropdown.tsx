@@ -1,18 +1,25 @@
-import { Space } from '@gitbook/api';
+import type { SiteSpace } from '@gitbook/api';
 
 import { tcls } from '@/lib/tailwind';
 
+import type { GitBookSiteContext } from '@v2/lib/context';
 import { Dropdown, DropdownChevron, DropdownMenu } from './Dropdown';
 import { SpacesDropdownMenuItem } from './SpacesDropdownMenuItem';
 
-export function SpacesDropdown(props: { space: Space; spaces: Space[]; className?: string }) {
-    const { space, spaces, className } = props;
+export function SpacesDropdown(props: {
+    context: GitBookSiteContext;
+    siteSpace: SiteSpace;
+    siteSpaces: SiteSpace[];
+    className?: string;
+}) {
+    const { context, siteSpace, siteSpaces, className } = props;
+    const { linker } = context;
 
     return (
         <Dropdown
             className={tcls(
                 'group-hover/dropdown:invisible', // Prevent hover from opening the dropdown, as it's annoying in this context
-                'group-focus-within/dropdown:group-hover/dropdown:visible', // When the dropdown is already open, it should remain visible when hovered
+                'group-focus-within/dropdown:group-hover/dropdown:visible' // When the dropdown is already open, it should remain visible when hovered
             )}
             button={(buttonProps) => (
                 <div
@@ -53,24 +60,26 @@ export function SpacesDropdown(props: { space: Space; spaces: Space[]; className
                         'contrast-more:group-hover/dropdown:ring-tint-hover',
                         'contrast-more:group-focus-within/dropdown:ring-tint-hover',
 
-                        className,
+                        className
                     )}
                 >
-                    <span className={tcls('line-clamp-2', 'grow')}>{space.title}</span>
+                    <span className={tcls('line-clamp-1', 'grow')}>{siteSpace.title}</span>
                     <DropdownChevron />
                 </div>
             )}
         >
             <DropdownMenu>
-                {spaces.map((otherSpace, index) => (
+                {siteSpaces.map((otherSiteSpace, index) => (
                     <SpacesDropdownMenuItem
-                        key={`${otherSpace.id}-${index}`}
+                        key={`${otherSiteSpace.id}-${index}`}
                         variantSpace={{
-                            id: otherSpace.id,
-                            title: otherSpace.title,
-                            url: otherSpace.urls.published ?? otherSpace.urls.app,
+                            id: otherSiteSpace.id,
+                            title: otherSiteSpace.title,
+                            url: otherSiteSpace.urls.published
+                                ? linker.toLinkForContent(otherSiteSpace.urls.published)
+                                : otherSiteSpace.space.urls.app,
                         }}
-                        active={otherSpace.id === space.id}
+                        active={otherSiteSpace.id === siteSpace.id}
                     />
                 ))}
             </DropdownMenu>

@@ -1,15 +1,13 @@
-import { CustomizationSettings, SiteCustomizationSettings } from '@gitbook/api';
+import type { SiteCustomizationSettings } from '@gitbook/api';
 
-import { languages, TranslationLanguage } from './translations';
+import { type TranslationLanguage, languages } from './translations';
 
 export * from './translate';
 
 /**
  * Create the translation context for a space to use in the server components.
  */
-export function getSpaceLanguage(
-    customization: CustomizationSettings | SiteCustomizationSettings,
-): TranslationLanguage {
+export function getSpaceLanguage(customization: SiteCustomizationSettings): TranslationLanguage {
     const fallback = languages.en;
 
     const { locale } = customization.internationalization;

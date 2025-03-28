@@ -78,7 +78,7 @@
         mask-image: linear-gradient(to bottom, white, white);
     }
     .grid-area-1-1 {
-        grid-area: 1/1;
+        grid-area: 1 / 1;
     }
     .gutter-stable {
         scrollbar-gutter: stable;
@@ -92,7 +92,7 @@
     }
     .triangle:before,
     .triangle:after {
-        content: '';
+        content: "";
         position: absolute;
         background-color: inherit;
     }
@@ -121,6 +121,13 @@
         }
     }
 
+    .bg-gradient-primary {
+        @apply bg-gradient-to-bl from-primary-4 to-tint-base to-60% bg-fixed;
+    }
+    .bg-gradient-tint {
+        @apply bg-gradient-to-bl from-tint-4 to-tint-base to-60% bg-fixed;
+    }
+
     /**
      * Utility to prevent horizontal jumps when the vertical scrollbar appears
      * It should be used on main containers of the layout, while preserving horizontal delimiters.
@@ -136,6 +143,10 @@
             margin-right: 0;
             width: calc(100% - var(--scrollbar-width));
         }
+        body:has(.page-full-width) .scroll-nojump {
+            margin-left: 0;
+            width: 100%;
+        }
     }
 }
 
@@ -148,4 +159,8 @@ html {
 }
 html.dark {
     color-scheme: dark light;
+}
+
+html.announcement-hidden .announcement-banner {
+    @apply hidden;
 }

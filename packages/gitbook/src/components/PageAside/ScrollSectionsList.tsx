@@ -6,8 +6,8 @@ import { useScrollActiveId } from '@/components/hooks';
 import type { DocumentSection } from '@/lib/document-sections';
 import { tcls } from '@/lib/tailwind';
 
-import { AsideSectionHighlight } from './AsideSectionHighlight';
 import { HEADER_HEIGHT_DESKTOP } from '../layout';
+import { AsideSectionHighlight } from './AsideSectionHighlight';
 
 /**
  * The threshold at which we consider a section as intersecting the viewport.
@@ -46,7 +46,7 @@ export function ScrollSectionsList(props: { sections: DocumentSection[] }) {
                         'relative',
                         'h-fit',
                         'mt-2',
-                        section.depth > 1 && ['ml-3', 'my-0', 'sidebar-list-line:ml-0'],
+                        section.depth > 1 && ['ml-3', 'my-0', 'sidebar-list-line:ml-0']
                     )}
                 >
                     {activeId === section.id ? (
@@ -62,7 +62,7 @@ export function ScrollSectionsList(props: { sections: DocumentSection[] }) {
                                     : [
                                           'sidebar-list-default:ml-3',
                                           'contrast-more:sidebar-list-default:ml-0',
-                                      ],
+                                      ]
                             )}
                         />
                     ) : null}
@@ -70,9 +70,6 @@ export function ScrollSectionsList(props: { sections: DocumentSection[] }) {
                         href={`#${section.id}`}
                         className={tcls(
                             'relative',
-                            'flex',
-                            'flex-row',
-                            'items-baseline',
                             'z-10',
                             'text-sm',
 
@@ -88,6 +85,7 @@ export function ScrollSectionsList(props: { sections: DocumentSection[] }) {
                             'sidebar-list-line:rounded-l-none',
 
                             'hover:bg-tint-hover',
+                            'theme-gradient:hover:bg-tint-12/1',
                             'hover:text-tint-strong',
                             'contrast-more:hover:ring-1',
                             'contrast-more:hover:ring-inset',
@@ -109,18 +107,23 @@ export function ScrollSectionsList(props: { sections: DocumentSection[] }) {
                                 'hover:text-primary',
                                 'contrast-more:text-primary',
                                 'contrast-more:hover:text-primary-strong',
+                                'sidebar-list-line:ml-px',
+
                                 'hover:bg-primary-hover',
+                                'theme-muted:hover:bg-primary-active',
+                                'theme-bold-tint:hover:bg-primary-active',
+                                'theme-gradient:hover:bg-primary-active',
+
                                 'tint:font-semibold',
                                 'contrast-more:font-semibold',
 
                                 'sidebar-list-default:border-tint',
-                                'sidebar-list-pill:hover:bg-primary-hover',
-                            ],
+                            ]
                         )}
                     >
                         {section.tag ? (
                             <span
-                                className={`openapi-method openapi-method-${section.tag.toLowerCase()}`}
+                                className={`-mt-0.5 openapi-method openapi-method-${section.tag.toLowerCase()}`}
                             >
                                 {section.tag}
                             </span>
@@ -132,7 +135,7 @@ export function ScrollSectionsList(props: { sections: DocumentSection[] }) {
                                     'line-through',
                                     'opacity-50',
                                     'contrast-more:opacity-60',
-                                ],
+                                ]
                             )}
                         >
                             {section.title}

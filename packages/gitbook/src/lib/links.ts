@@ -1,14 +1,17 @@
 import 'server-only';
 
 import {
-    RevisionPage,
-    RevisionPageDocument,
-    RevisionPageGroup,
+    type RevisionPage,
+    type RevisionPageDocument,
+    type RevisionPageGroup,
     RevisionPageType,
 } from '@gitbook/api';
 import { headers } from 'next/headers';
 
+import { GITBOOK_APP_URL } from '@v2/lib/env';
 import { getPagePath } from './pages';
+import { withLeadingSlash, withTrailingSlash } from './paths';
+import { assertIsNotV2 } from './v2';
 
 export interface PageHrefContext {
     /**
@@ -23,25 +26,36 @@ export interface PageHrefContext {
  * The value will start and finish with /
  */
 export async function getBasePath(): Promise<string> {
+    assertIsNotV2();
     const headersList = await headers();
-    let path = headersList.get('x-gitbook-basepath') ?? '/';
+    const path = headersList.get('x-gitbook-basepath') ?? '/';
 
-    if (!path.startsWith('/')) {
-        path = '/' + path;
-    }
+    return withTrailingSlash(withLeadingSlash(path));
+}
 
-    if (!path.endsWith('/')) {
-        path = path + '/';
-    }
+/**
+ * Return the site base path for the current request.
+ * The value will start and finish with /
+ */
+export async function getSiteBasePath(): Promise<string> {
+    assertIsNotV2();
+    const headersList = await headers();
+    const path = headersList.get('x-gitbook-site-basepath') ?? '/';
 
-    return path;
+    return withTrailingSlash(withLeadingSlash(path));
 }
 
 /**
  * Return the current host for the current request.
  */
 export async function getHost(): Promise<string> {
+    assertIsNotV2();
     const headersList = await headers();
+    const mode = headersList.get('x-gitbook-mode');
+    if (mode === 'proxy') {
+        return headersList.get('x-forwarded-host') ?? '';
+    }
+
     return headersList.get('x-gitbook-host') ?? headersList.get('host') ?? '';
 }
 
@@ -52,16 +66,17 @@ export async function getHost(): Promise<string> {
  * The URL will end with "/".
  */
 export async function getRootUrl(): Promise<string> {
+    assertIsNotV2();
     const [headersList, host] = await Promise.all([headers(), getHost()]);
     const protocol = headersList.get('x-forwarded-proto') ?? 'https';
     let path = headersList.get('x-gitbook-origin-basepath') ?? '/';
 
     if (!path.startsWith('/')) {
-        path = '/' + path;
+        path = `/${path}`;
     }
 
     if (!path.endsWith('/')) {
-        path = path + '/';
+        path = `${path}/`;
     }
 
     return `${protocol}://${host}${path}`;
@@ -72,6 +87,7 @@ export async function getRootUrl(): Promise<string> {
  * The URL will end with "/".
  */
 export async function getBaseUrl(): Promise<string> {
+    assertIsNotV2();
     const [headersList, host, basePath] = await Promise.all([headers(), getHost(), getBasePath()]);
     const protocol = headersList.get('x-forwarded-proto') ?? 'https';
     return `${protocol}://${host}${basePath}`;
@@ -80,7 +96,8 @@ export async function getBaseUrl(): Promise<string> {
 /**
  * Create an absolute href in the current content.
  */
-export async function getAbsoluteHref(href: string, withHost: boolean = false): Promise<string> {
+export async function getAbsoluteHref(href: string, withHost = false): Promise<string> {
+    assertIsNotV2();
     const base = withHost ? await getBaseUrl() : await getBasePath();
     return `${base}${href.startsWith('/') ? href.slice(1) : href}`;
 }
@@ -89,7 +106,7 @@ export async function getAbsoluteHref(href: string, withHost: boolean = false): 
  * Create an absolute href in the GitBook application.
  */
 export function getGitbookAppHref(pathname: string): string {
-    const appUrl = new URL(process.env.NEXT_PUBLIC_GITBOOK_APP_URL ?? `https://app.gitbook.com`);
+    const appUrl = new URL(GITBOOK_APP_URL);
     appUrl.pathname = pathname;
 
     return appUrl.toString();
@@ -103,25 +120,25 @@ export async function getPageHref(
     page: RevisionPageDocument | RevisionPageGroup,
     context: PageHrefContext = {},
     /** Anchor to link to in the page. */
-    anchor?: string,
+    anchor?: string
 ): Promise<string> {
+    assertIsNotV2();
     const { pdf } = context;
 
     if (pdf) {
         if (pdf.includes(page.id)) {
-            return '#' + getPagePDFContainerId(page, anchor);
-        } else {
-            if (page.type === RevisionPageType.Group) {
-                return '#';
-            }
-
-            // Use an absolute URL to the page
-            return page.urls.app;
+            return `#${getPagePDFContainerId(page, anchor)}`;
         }
+        if (page.type === RevisionPageType.Group) {
+            return '#';
+        }
+
+        // Use an absolute URL to the page
+        return page.urls.app;
     }
 
     const href =
-        (await getAbsoluteHref(getPagePath(rootPages, page))) + (anchor ? '#' + anchor : '');
+        (await getAbsoluteHref(getPagePath(rootPages, page))) + (anchor ? `#${anchor}` : '');
     return href;
 }
 
@@ -130,7 +147,7 @@ export async function getPageHref(
  */
 export function getPagePDFContainerId(
     page: RevisionPageDocument | RevisionPageGroup,
-    anchor?: string,
+    anchor?: string
 ): string {
-    return `pdf-page-${page.id}` + (anchor ? `-${anchor}` : '');
+    return `pdf-page-${page.id}${anchor ? `-${anchor}` : ''}`;
 }

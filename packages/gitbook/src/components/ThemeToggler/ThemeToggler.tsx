@@ -1,6 +1,6 @@
 'use client';
 
-import { Icon, IconName } from '@gitbook/icons';
+import { Icon, type IconName } from '@gitbook/icons';
 import { useTheme } from 'next-themes';
 import React from 'react';
 
@@ -12,7 +12,7 @@ type ThemeMode = 'light' | 'system' | 'dark';
 /**
  * Buttons to toggle between light/system/dark modes.
  */
-export function ThemeToggler(props: {}) {
+export function ThemeToggler() {
     const language = useLanguage();
 
     const [mounted, setMounted] = React.useState(false);
@@ -78,12 +78,14 @@ function ThemeButton(props: {
                 'ring-tint',
                 active && [
                     'bg-primary',
+                    'theme-muted:bg-primary-hover',
+                    'theme-bold-tint:bg-primary-hover',
                     'hover:bg-primary',
                     'text-primary-strong',
                     'contrast-more:text-primary-strong',
                     'contrast-more:ring-1',
                     'ring-primary',
-                ],
+                ]
             )}
         >
             <Icon icon={icon} className={tcls('size-4')} />

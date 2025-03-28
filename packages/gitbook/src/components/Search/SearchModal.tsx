@@ -3,26 +3,23 @@
 import { Icon } from '@gitbook/icons';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import React, { useState } from 'react';
+import React from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 
 import { tString, useLanguage } from '@/intl/client';
-import { SiteContentPointer } from '@/lib/api';
 import { tcls } from '@/lib/tailwind';
 
+import { LoadingPane } from '../primitives/LoadingPane';
 import { SearchAskAnswer } from './SearchAskAnswer';
 import { SearchAskProvider, useSearchAskState } from './SearchAskContext';
-import { SearchResults, SearchResultsRef } from './SearchResults';
+import { SearchResults, type SearchResultsRef } from './SearchResults';
 import { SearchScopeToggle } from './SearchScopeToggle';
-import { SearchState, UpdateSearchState, useSearch } from './useSearch';
-import { LoadingPane } from '../primitives/LoadingPane';
+import { type SearchState, type UpdateSearchState, useSearch } from './useSearch';
 
 interface SearchModalProps {
-    revisionId: string;
     spaceTitle: string;
     isMultiVariants: boolean;
     withAsk: boolean;
-    pointer: SiteContentPointer;
 }
 
 /**
@@ -40,7 +37,7 @@ export function SearchModal(props: SearchModalProps) {
             e.preventDefault();
             setSearchState({ ask: false, query: '', global: false });
         },
-        [],
+        []
     );
 
     // Add a global class on the body when the search modal is open
@@ -87,10 +84,10 @@ export function SearchModal(props: SearchModalProps) {
                             'bg-tint-12/4',
                             'dark:bg-tint-1/6',
                             'backdrop-blur-2xl',
-                            'z-30',
+                            'z-50',
                             'px-4',
                             'pt-4',
-                            'md:pt-[min(8vh,6rem)]',
+                            'md:pt-[min(8vh,6rem)]'
                         )}
                         onClick={() => {
                             onClose();
@@ -111,7 +108,7 @@ export function SearchModal(props: SearchModalProps) {
                                             'fixed',
                                             'inset-0',
                                             'z-10',
-                                            'pointer-events-none',
+                                            'pointer-events-none'
                                         )}
                                     >
                                         <LoadingPane
@@ -142,18 +139,9 @@ function SearchModalBody(
         state: SearchState;
         setSearchState: UpdateSearchState;
         onClose: (to?: string) => void;
-    },
+    }
 ) {
-    const {
-        pointer,
-        revisionId,
-        spaceTitle,
-        withAsk,
-        isMultiVariants,
-        state,
-        setSearchState,
-        onClose,
-    } = props;
+    const { spaceTitle, withAsk, isMultiVariants, state, setSearchState, onClose } = props;
 
     const language = useLanguage();
     const resultsRef = React.useRef<SearchResultsRef>(null);
@@ -201,6 +189,9 @@ function SearchModalBody(
         setSearchState((state) => (state ? { ...state, ask: true } : null));
     };
 
+    // We trim the query to avoid invalidating the search when the user is typing between words.
+    const normalizedQuery = state.query.trim();
+
     return (
         <motion.div
             transition={{
@@ -239,7 +230,7 @@ function SearchModalBody(
                 'shadow-2xl',
                 'overflow-hidden',
                 'dark:ring-inset',
-                'dark:ring-tint',
+                'dark:ring-tint'
             )}
             onClick={(event) => {
                 event.stopPropagation();
@@ -251,7 +242,7 @@ function SearchModalBody(
                     'flex-row',
                     'items-start',
                     state.query !== null ? 'border-b' : null,
-                    'border-tint-subtle',
+                    'border-tint-subtle'
                 )}
             >
                 <div className={tcls('p-2', 'pl-4', 'pt-4')}>
@@ -265,7 +256,7 @@ function SearchModalBody(
                         'flex-wrap',
                         'gap-y-0',
                         'gap-x-4',
-                        'items-end',
+                        'items-end'
                     )}
                 >
                     <input
@@ -283,11 +274,11 @@ function SearchModalBody(
                             'p-2',
                             'focus:outline-none',
                             'bg-transparent',
-                            'whitespace-pre-line',
+                            'whitespace-pre-line'
                         )}
                         placeholder={tString(
                             language,
-                            withAsk ? 'search_ask_input_placeholder' : 'search_input_placeholder',
+                            withAsk ? 'search_ask_input_placeholder' : 'search_input_placeholder'
                         )}
                         spellCheck="false"
                         autoComplete="off"
@@ -299,16 +290,14 @@ function SearchModalBody(
             {!state.ask || !withAsk ? (
                 <SearchResults
                     ref={resultsRef}
-                    pointer={pointer}
-                    revisionId={revisionId}
                     global={isMultiVariants && state.global}
-                    query={state.query}
+                    query={normalizedQuery}
                     withAsk={withAsk}
                     onSwitchToAsk={onSwitchToAsk}
-                ></SearchResults>
+                />
             ) : null}
-            {state.query && state.ask && withAsk ? (
-                <SearchAskAnswer pointer={pointer} query={state.query} />
+            {normalizedQuery && state.ask && withAsk ? (
+                <SearchAskAnswer query={normalizedQuery} />
             ) : null}
         </motion.div>
     );

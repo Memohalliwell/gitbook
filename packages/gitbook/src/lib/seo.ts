@@ -1,12 +1,5 @@
-import {
-    Collection,
-    ContentVisibility,
-    RevisionPageDocument,
-    RevisionPageGroup,
-    Site,
-    SiteVisibility,
-    Space,
-} from '@gitbook/api';
+import { type RevisionPageDocument, type RevisionPageGroup, SiteVisibility } from '@gitbook/api';
+import type { GitBookSiteContext } from '@v2/lib/context';
 import { headers } from 'next/headers';
 
 /**
@@ -14,7 +7,7 @@ import { headers } from 'next/headers';
  */
 export function isPageIndexable(
     ancestors: Array<RevisionPageDocument | RevisionPageGroup>,
-    page: RevisionPageDocument | RevisionPageGroup,
+    page: RevisionPageDocument | RevisionPageGroup
 ): boolean {
     // @ts-ignore - noIndex and noRobotsIndex are not in the type
     // until we fix the deprecated APIs
@@ -31,7 +24,7 @@ export function isPageIndexable(
 /**
  * Return true if a space should be indexed by search engines.
  */
-export async function isSpaceIndexable({ space, site }: { space: Space; site: Site | null }) {
+export async function isSiteIndexable(context: GitBookSiteContext) {
     const headersList = await headers();
 
     if (
@@ -42,21 +35,13 @@ export async function isSpaceIndexable({ space, site }: { space: Space; site: Si
     }
 
     // Prevent indexation of preview of revisions / change-requests
-    if (
-        headersList.get('x-gitbook-content-revision') ||
-        headersList.get('x-gitbook-content-changerequest')
-    ) {
+    if (context.changeRequest || context.revisionId !== context.space.revision) {
         return false;
     }
 
-    if (site) {
-        return shouldIndexVisibility(site.visibility);
-    }
-
-    // space with no site should not be indexed
-    return false;
+    return shouldIndexVisibility(context.site.visibility);
 }
 
-function shouldIndexVisibility(visibility: ContentVisibility | SiteVisibility) {
-    return visibility === ContentVisibility.Public;
+function shouldIndexVisibility(visibility: SiteVisibility) {
+    return visibility === SiteVisibility.Public;
 }

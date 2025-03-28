@@ -1,16 +1,29 @@
 'use server';
 
-import { RevisionPage, SearchAIAnswer, SearchPageResult, SiteSpace, Space } from '@gitbook/api';
-import * as React from 'react';
-import { assert } from 'ts-essentials';
-
-import { streamResponse } from '@/lib/actions';
-import * as api from '@/lib/api';
-import { getAbsoluteHref, getPageHref } from '@/lib/links';
 import { resolvePageId } from '@/lib/pages';
+import { findSiteSpaceById, getSiteStructureSections } from '@/lib/sites';
 import { filterOutNullable } from '@/lib/typescript';
-import { getSiteStructureSections } from '@/lib/utils';
+import { getV1BaseContext } from '@/lib/v1';
+import type {
+    RevisionPage,
+    SearchAIAnswer,
+    SearchAIRecommendedQuestionStream,
+    SearchPageResult,
+    SearchSpaceResult,
+    SiteSection,
+    SiteSectionGroup,
+    Space,
+} from '@gitbook/api';
+import type { GitBookBaseContext, GitBookSiteContext } from '@v2/lib/context';
+import { fetchServerActionSiteContext, getServerActionBaseContext } from '@v2/lib/server-actions';
+import { createStreamableValue } from 'ai/rsc';
+import type * as React from 'react';
 
+import { joinPathWithBaseURL } from '@/lib/paths';
+import { isV2 } from '@/lib/v2';
+import type { IconName } from '@gitbook/icons';
+import { throwIfDataError } from '@v2/lib/data';
+import { getSiteURLDataFromMiddleware } from '@v2/lib/middleware';
 import { DocumentView } from '../DocumentView';
 
 export type OrderedComputedResult = ComputedPageResult | ComputedSectionResult;
@@ -19,18 +32,24 @@ export interface ComputedSectionResult {
     type: 'section';
     id: string;
     title: string;
-    href: string;
     body: string;
+    href: string;
+
+    pageId: string;
+    spaceId: string;
 }
 
 export interface ComputedPageResult {
     type: 'page';
     id: string;
     title: string;
+
     href: string;
 
-    /** When part of a multi-spaces search, the title of the space */
-    spaceTitle?: string;
+    pageId: string;
+    spaceId: string;
+
+    breadcrumbs?: Array<{ icon?: IconName; label: string }>;
 }
 
 export interface AskAnswerSource {
@@ -47,86 +66,12 @@ export interface AskAnswerResult {
 }
 
 /**
- * Search for content in a site by scoping the search to all content, a specific spaces or current space.
- */
-async function searchSiteContent(args: {
-    pointer: api.SiteContentPointer;
-    query: string;
-    scope:
-        | { mode: 'all' }
-        | { mode: 'current'; siteSpaceId: string }
-        | { mode: 'specific'; siteSpaceIds: string[] };
-    cacheBust?: string;
-}): Promise<OrderedComputedResult[]> {
-    const { pointer, scope, query, cacheBust } = args;
-
-    if (query.length <= 1) {
-        return [];
-    }
-
-    const needsStructure =
-        scope.mode === 'all' ||
-        scope.mode === 'current' ||
-        (scope.mode === 'specific' && scope.siteSpaceIds.length > 1);
-
-    const [searchResults, siteData] = await Promise.all([
-        api.searchSiteContent(pointer.organizationId, pointer.siteId, query, scope, cacheBust),
-        needsStructure ? api.getSiteData(pointer) : null,
-    ]);
-    const siteStructure = siteData?.structure;
-
-    const siteSpaces = siteStructure
-        ? siteStructure.type === 'siteSpaces'
-            ? siteStructure.structure
-            : getSiteStructureSections(siteStructure).reduce<SiteSpace[]>((prev, section) => {
-                  const sectionSiteSpaces = section.siteSpaces.map((siteSpace) => ({
-                      ...siteSpace,
-                      space: {
-                          ...siteSpace.space,
-                          title: section.title || siteSpace.space.title,
-                      },
-                  }));
-
-                  prev.push(...sectionSiteSpaces);
-                  return prev;
-              }, [])
-        : null;
-
-    if (siteSpaces) {
-        // We are searching all of this Site's content
-        return (
-            await Promise.all(
-                searchResults.items.map(async (spaceItem) => {
-                    const siteSpace = siteSpaces.find(
-                        (siteSpace) => siteSpace.space.id === spaceItem.id,
-                    );
-
-                    return Promise.all(
-                        spaceItem.pages.map((item) => transformSitePageResult(item, siteSpace)),
-                    );
-                }),
-            )
-        ).flat(2);
-    }
-
-    return (
-        await Promise.all(
-            searchResults.items.map((spaceItem) => {
-                return Promise.all(spaceItem.pages.map((item) => transformPageResult(item)));
-            }),
-        )
-    ).flat(2);
-}
-
-/**
  * Server action to search content in the entire site.
  */
-export async function searchAllSiteContent(
-    query: string,
-    pointer: api.SiteContentPointer,
-): Promise<OrderedComputedResult[]> {
-    return await searchSiteContent({
-        pointer,
+export async function searchAllSiteContent(query: string): Promise<OrderedComputedResult[]> {
+    const context = isV2() ? await getServerActionBaseContext() : await getV1BaseContext();
+
+    return await searchSiteContent(context, {
         query,
         scope: { mode: 'all' },
     });
@@ -135,116 +80,223 @@ export async function searchAllSiteContent(
 /**
  * Server action to search content in a space.
  */
-export async function searchSiteSpaceContent(
-    query: string,
-    pointer: api.SiteContentPointer,
-    revisionId: string,
-): Promise<OrderedComputedResult[]> {
-    const siteSpaceId = pointer.siteSpaceId;
-    assert(siteSpaceId, 'Expected siteSpaceId for searchSiteSpaceContent');
+export async function searchSiteSpaceContent(query: string): Promise<OrderedComputedResult[]> {
+    const context = isV2() ? await getServerActionBaseContext() : await getV1BaseContext();
+    const siteURLData = await getSiteURLDataFromMiddleware();
 
-    return await searchSiteContent({
-        pointer,
+    return await searchSiteContent(context, {
         query,
         // If we have a siteSectionId that means its a sections site use `current` mode
         // which searches in the current space + all default spaces of sections
-        scope: pointer.siteSectionId
-            ? { mode: 'current', siteSpaceId }
-            : { mode: 'specific', siteSpaceIds: [siteSpaceId] },
-        // We want to break cache for this specific space if the revisionId is different so use it as a cache busting key
-        cacheBust: revisionId,
+        scope: siteURLData.siteSection
+            ? { mode: 'current', siteSpaceId: siteURLData.siteSpace }
+            : { mode: 'specific', siteSpaceIds: [siteURLData.siteSpace] },
     });
 }
 
 /**
  * Server action to ask a question in a space.
  */
-export const streamAskQuestion = streamResponse(async function* (
-    organizationId: string,
-    siteId: string,
-    siteSpaceId: string | null,
-    question: string,
-) {
-    const apiCtx = await api.api();
-    const stream = apiCtx.client.orgs.streamAskInSite(
-        organizationId,
-        siteId,
-        {
-            question,
-            context: siteSpaceId
-                ? {
-                      siteSpaceId,
-                  }
-                : undefined,
-            scope: {
-                mode: 'default',
+export async function streamAskQuestion({
+    question,
+}: {
+    question: string;
+}) {
+    const responseStream = createStreamableValue<AskAnswerResult | undefined>();
 
-                // Include the current site space regardless.
-                includedSiteSpaces: siteSpaceId ? [siteSpaceId] : undefined,
+    (async () => {
+        const context = await fetchServerActionSiteContext(
+            isV2() ? await getServerActionBaseContext() : await getV1BaseContext()
+        );
+
+        const apiClient = await context.dataFetcher.api();
+
+        const stream = apiClient.orgs.streamAskInSite(
+            context.organizationId,
+            context.site.id,
+            {
+                question,
+                context: {
+                    siteSpaceId: context.siteSpace.id,
+                },
+                scope: {
+                    mode: 'default',
+                    // Include the current site space regardless.
+                    includedSiteSpaces: [context.siteSpace.id],
+                },
             },
-        },
-        { format: 'document' },
-    );
+            { format: 'document' }
+        );
 
-    const spacePromises = new Map<string, Promise<RevisionPage[]>>();
-    for await (const chunk of stream) {
-        const answer = chunk.answer;
+        const spacePromises = new Map<string, Promise<RevisionPage[]>>();
+        for await (const chunk of stream) {
+            const answer = chunk.answer;
 
-        // Register the space of each page source into the promise queue.
-        const spaces = answer.sources
-            .map((source) => {
-                if (source.type !== 'page') {
-                    return null;
-                }
+            // Register the space of each page source into the promise queue.
+            const spaces = answer.sources
+                .map((source) => {
+                    if (source.type !== 'page') {
+                        return null;
+                    }
 
-                if (!spacePromises.has(source.space)) {
-                    spacePromises.set(
-                        source.space,
-                        api.getRevisionPages(source.space, source.revision, { metadata: false }),
-                    );
-                }
+                    if (!spacePromises.has(source.space)) {
+                        spacePromises.set(
+                            source.space,
+                            throwIfDataError(
+                                context.dataFetcher.getRevisionPages({
+                                    spaceId: source.space,
+                                    revisionId: source.revision,
+                                    metadata: false,
+                                })
+                            )
+                        );
+                    }
 
-                return source.space;
-            })
-            .filter(filterOutNullable);
+                    return source.space;
+                })
+                .filter(filterOutNullable);
 
-        // Get the pages for all spaces referenced by this answer.
-        const pages = await Promise.all(
-            spaces.map(async (space) => {
-                const pages = await spacePromises.get(space);
-                return { space, pages };
-            }),
-        ).then((results) => {
-            return results.reduce((map, result) => {
-                if (result.pages) {
-                    map.set(result.space, result.pages);
-                }
-                return map;
-            }, new Map<string, RevisionPage[]>());
+            // Get the pages for all spaces referenced by this answer.
+            const pages = await Promise.all(
+                spaces.map(async (space) => {
+                    const pages = await spacePromises.get(space);
+                    return { space, pages };
+                })
+            ).then((results) => {
+                return results.reduce((map, result) => {
+                    if (result.pages) {
+                        map.set(result.space, result.pages);
+                    }
+                    return map;
+                }, new Map<string, RevisionPage[]>());
+            });
+            responseStream.update(
+                await transformAnswer(context, { answer: chunk.answer, spacePages: pages })
+            );
+        }
+    })()
+        .then(() => {
+            responseStream.done();
+        })
+        .catch((error) => {
+            responseStream.error(error);
         });
-        yield await transformAnswer(chunk.answer, pages);
-    }
-});
+
+    return {
+        stream: responseStream.value,
+    };
+}
 
 /**
  * Stream a list of suggested questions for the site.
  */
-export const streamRecommendedQuestions = streamResponse(async function* (
-    organizationId: string,
-    siteId: string,
-) {
-    const apiCtx = await api.api();
-    const stream = apiCtx.client.orgs.streamRecommendedQuestionsInSite(organizationId, siteId);
+export async function streamRecommendedQuestions() {
+    const siteURLData = await getSiteURLDataFromMiddleware();
+    const context = isV2() ? await getServerActionBaseContext() : await getV1BaseContext();
 
-    for await (const chunk of stream) {
-        console.log('got question', chunk);
-        yield chunk;
+    const responseStream = createStreamableValue<SearchAIRecommendedQuestionStream | undefined>();
+
+    (async () => {
+        const apiClient = await context.dataFetcher.api();
+        const apiStream = apiClient.orgs.streamRecommendedQuestionsInSite(
+            siteURLData.organization,
+            siteURLData.site
+        );
+
+        for await (const chunk of apiStream) {
+            responseStream.update(chunk);
+        }
+    })()
+        .then(() => {
+            responseStream.done();
+        })
+        .catch((error) => {
+            responseStream.error(error);
+        });
+
+    return { stream: responseStream.value };
+}
+
+/**
+ * Search for content in a site by scoping the search to all content, a specific spaces or current space.
+ */
+async function searchSiteContent(
+    context: GitBookBaseContext,
+    args: {
+        query: string;
+        scope:
+            | { mode: 'all' }
+            | { mode: 'current'; siteSpaceId: string }
+            | { mode: 'specific'; siteSpaceIds: string[] };
     }
-});
+): Promise<OrderedComputedResult[]> {
+    const { dataFetcher } = context;
+    const siteURLData = await getSiteURLDataFromMiddleware();
+
+    const { scope, query } = args;
+
+    if (query.length <= 1) {
+        return [];
+    }
+
+    const [searchResults, { structure }] = await Promise.all([
+        throwIfDataError(
+            dataFetcher.searchSiteContent({
+                organizationId: siteURLData.organization,
+                siteId: siteURLData.site,
+                query,
+                scope,
+            })
+        ),
+        throwIfDataError(
+            dataFetcher.getPublishedContentSite({
+                organizationId: siteURLData.organization,
+                siteId: siteURLData.site,
+                siteShareKey: siteURLData.shareKey,
+            })
+        ),
+    ]);
+
+    return (
+        await Promise.all(
+            searchResults.map(async (spaceItem) => {
+                const sections = getSiteStructureSections(structure).flatMap((item) =>
+                    item.object === 'site-section-group' ? [item, ...item.sections] : item
+                );
+                const siteSpace = findSiteSpaceById(structure, spaceItem.id);
+                const siteSection = sections.find(
+                    (section) => section.id === siteSpace?.section
+                ) as SiteSection;
+                const siteSectionGroup = siteSection?.sectionGroup
+                    ? sections.find((sectionGroup) => sectionGroup.id === siteSection.sectionGroup)
+                    : null;
+
+                return Promise.all(
+                    spaceItem.pages.map((pageItem) =>
+                        transformSitePageResult(context, {
+                            pageItem,
+                            spaceItem,
+                            space: siteSpace?.space,
+                            spaceURL: siteSpace?.urls.published,
+                            siteSection: siteSection ?? undefined,
+                            siteSectionGroup: (siteSectionGroup as SiteSectionGroup) ?? undefined,
+                        })
+                    )
+                );
+            })
+        )
+    ).flat(2);
+}
 
 async function transformAnswer(
-    answer: SearchAIAnswer,
-    spacePages: Map<string, RevisionPage[]>,
+    context: GitBookSiteContext,
+    {
+        answer,
+        spacePages,
+    }: {
+        answer: SearchAIAnswer;
+        spacePages: Map<string, RevisionPage[]>;
+    }
 ): Promise<AskAnswerResult> {
     const sources = (
         await Promise.all(
@@ -264,12 +316,23 @@ async function transformAnswer(
                     return null;
                 }
 
+                // Find the siteSpace in case it is nested in a site section so we can resolve the URL appropriately
+                const siteSpace = findSiteSpaceById(context.structure, source.space);
+                const spaceURL = siteSpace?.urls.published;
+
+                const href = spaceURL
+                    ? joinPathWithBaseURL(spaceURL, page.page.path)
+                    : context.linker.toPathForPage({
+                          pages,
+                          page: page.page,
+                      });
+
                 return {
                     id: source.page,
                     title: page.page.title,
-                    href: await getPageHref(pages, page.page),
+                    href,
                 };
-            }),
+            })
         )
     ).filter(filterOutNullable);
 
@@ -280,8 +343,7 @@ async function transformAnswer(
                     document={answer.answer.document}
                     context={{
                         mode: 'default',
-                        contentRefContext: null,
-                        resolveContentRef: async () => null,
+                        contentContext: undefined,
                         wrapBlocksInSuspense: false,
                     }}
                     style={['space-y-5']}
@@ -292,66 +354,59 @@ async function transformAnswer(
     };
 }
 
-async function transformSectionsAndPage(args: {
-    item: SearchPageResult;
-    space?: Space;
-    spaceURL?: string;
-}): Promise<[ComputedPageResult, ComputedSectionResult[]]> {
-    const { item, space, spaceURL } = args;
-
-    // Resolve a relative path to an absolute URL
-    // if the search result is relative to another space, we use the space URL
-    const getURL = async (path: string, spaceURL?: string) => {
-        if (spaceURL) {
-            if (!spaceURL.endsWith('/')) {
-                spaceURL += '/';
-            }
-            if (path.startsWith('/')) {
-                path = path.slice(1);
-            }
-            return spaceURL + path;
-        } else {
-            return getAbsoluteHref(path);
-        }
-    };
-
-    const sections = await Promise.all(
-        item.sections?.map<Promise<ComputedSectionResult>>(async (section) => ({
-            type: 'section',
-            id: item.id + '/' + section.id,
-            title: section.title,
-            href: await getURL(section.path, spaceURL),
-            body: section.body,
-        })) ?? [],
-    );
+async function transformSitePageResult(
+    context: GitBookBaseContext,
+    args: {
+        pageItem: SearchPageResult;
+        spaceItem: SearchSpaceResult;
+        space?: Space;
+        spaceURL?: string;
+        siteSection?: SiteSection;
+        siteSectionGroup?: SiteSectionGroup;
+    }
+): Promise<OrderedComputedResult[]> {
+    const { pageItem, spaceItem, space, spaceURL, siteSection, siteSectionGroup } = args;
+    const { linker } = context;
 
     const page: ComputedPageResult = {
         type: 'page',
-        id: item.id,
-        title: item.title,
-        href: await getURL(item.path, spaceURL),
-        spaceTitle: space?.title,
+        id: `${spaceItem.id}/${pageItem.id}`,
+        title: pageItem.title,
+        href: spaceURL
+            ? linker.toLinkForContent(joinPathWithBaseURL(spaceURL, pageItem.path))
+            : linker.toPathInSpace(pageItem.path),
+        pageId: pageItem.id,
+        spaceId: spaceItem.id,
+        breadcrumbs: [
+            siteSectionGroup && {
+                icon: siteSectionGroup?.icon as IconName,
+                label: siteSectionGroup.title,
+            },
+            siteSection && {
+                icon: siteSection?.icon as IconName,
+                label: siteSection.title,
+            },
+            (!siteSection || siteSection?.siteSpaces.length > 1) && space
+                ? {
+                      label: space?.title,
+                  }
+                : undefined,
+        ].filter((item) => item !== undefined),
     };
 
-    return [page, sections];
-}
+    const pageSections = await Promise.all(
+        pageItem.sections?.map<Promise<ComputedSectionResult>>(async (section) => ({
+            type: 'section',
+            id: `${page.id}/${section.id}`,
+            title: section.title,
+            href: spaceURL
+                ? linker.toLinkForContent(joinPathWithBaseURL(spaceURL, section.path))
+                : linker.toPathInSpace(pageItem.path),
+            body: section.body,
+            pageId: pageItem.id,
+            spaceId: spaceItem.id,
+        })) ?? []
+    );
 
-async function transformSitePageResult(item: SearchPageResult, siteSpace?: SiteSpace) {
-    const [page, sections] = await transformSectionsAndPage({
-        item,
-        space: siteSpace?.space,
-        spaceURL: siteSpace?.urls.published,
-    });
-
-    return [page, ...sections];
-}
-
-async function transformPageResult(item: SearchPageResult, space?: Space) {
-    const [page, sections] = await transformSectionsAndPage({
-        item,
-        space,
-        spaceURL: space?.urls.published ?? space?.urls.app,
-    });
-
-    return [page, ...sections];
+    return [page, ...pageSections];
 }

@@ -1,22 +1,13 @@
-'use client';
+import type { OpenAPI } from '@gitbook/openapi-parser';
 
-import { OpenAPI } from '@scalar/openapi-types';
-
-import { OpenAPIOperationData, fromJSON } from './fetchOpenAPIOperation';
-import { InteractiveSection } from './InteractiveSection';
 import { OpenAPIRequestBody } from './OpenAPIRequestBody';
 import { OpenAPIResponses } from './OpenAPIResponses';
-import { OpenAPISchemaProperties } from './OpenAPISchema';
+import { OpenAPISchemaProperties } from './OpenAPISchemaServer';
 import { OpenAPISecurities } from './OpenAPISecurities';
-import { OpenAPIClientContext } from './types';
-import { noReference } from './utils';
+import { StaticSection } from './StaticSection';
+import type { OpenAPIClientContext, OpenAPIOperationData } from './types';
+import { parameterToProperty } from './utils';
 
-/**
- * Client component to render the spec for the request and response.
- *
- * We use a client component as rendering recursive JSON schema in the server is expensive
- * (the entire schema is rendered at once, while the client component only renders the visible part)
- */
 export function OpenAPISpec(props: { data: OpenAPIOperationData; context: OpenAPIClientContext }) {
     const { data, context } = props;
 
@@ -28,42 +19,37 @@ export function OpenAPISpec(props: { data: OpenAPIOperationData; context: OpenAP
     return (
         <>
             {securities.length > 0 ? (
-                <OpenAPISecurities securities={securities} context={context} />
+                <OpenAPISecurities key="securities" securities={securities} context={context} />
             ) : null}
 
-            {parameterGroups.map((group) => (
-                <InteractiveSection
-                    key={group.key}
-                    className="openapi-parameters"
-                    header={group.label}
-                >
-                    <OpenAPISchemaProperties
-                        properties={group.parameters.map((parameter) => ({
-                            propertyName: parameter.name,
-                            schema: {
-                                // Description of the parameter is defined at the parameter level
-                                // we use display it if the schema doesn't override it
-                                description: parameter.description,
-                                example: parameter.example,
-                                // Deprecated can be defined at the parameter level
-                                deprecated: parameter.deprecated,
-                                ...(noReference(parameter.schema) ?? {}),
-                            },
-                            required: parameter.required,
-                        }))}
-                        context={context}
-                    />
-                </InteractiveSection>
-            ))}
+            {parameterGroups.map((group) => {
+                return (
+                    <StaticSection
+                        key={`parameter-${group.key}`}
+                        className="openapi-parameters"
+                        header={group.label}
+                    >
+                        <OpenAPISchemaProperties
+                            properties={group.parameters.map(parameterToProperty)}
+                            context={context}
+                        />
+                    </StaticSection>
+                );
+            })}
 
             {operation.requestBody ? (
                 <OpenAPIRequestBody
-                    requestBody={noReference(operation.requestBody)}
+                    key="body"
+                    requestBody={operation.requestBody}
                     context={context}
                 />
             ) : null}
             {operation.responses ? (
-                <OpenAPIResponses responses={noReference(operation.responses)} context={context} />
+                <OpenAPIResponses
+                    key="responses"
+                    responses={operation.responses}
+                    context={context}
+                />
             ) : null}
         </>
     );

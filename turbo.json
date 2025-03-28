@@ -1,16 +1,19 @@
 {
     "$schema": "https://turbo.build/schema.json",
-    "ui": "tui",
-    "globalEnv": ["NODE_ENV", "CI", "ARGOS_*", "GITHUB_*", "GITBOOK_*", "SENTRY_*"],
+    "ui": "stream",
+    "globalEnv": [
+        "NODE_ENV",
+        "CI",
+        "ARGOS_*",
+        "GITHUB_*",
+        "GITBOOK_*",
+        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY"
+    ],
     "tasks": {
         // Prepare the package for all other tasks
         "generate": {
             "dependsOn": ["^generate"],
             "outputs": ["dist"]
-        },
-        "@gitbook/icons#generate": {
-            "dependsOn": ["^generate"],
-            "outputs": ["data/*.json"]
         },
         // Build the package for publishing
         "build": {
@@ -29,12 +32,11 @@
         },
         // Build the package for Cloudflare Pages
         "build:cloudflare": {
-            "dependsOn": ["^build", "generate"],
-            "env": ["NEXT_SERVER_ACTIONS_ENCRYPTION_KEY"]
+            "dependsOn": ["^build", "generate"]
         },
         // Check the package for type errors
         "typecheck": {
-            "dependsOn": ["^typecheck", "^build", "generate"]
+            "dependsOn": ["^typecheck", "build"]
         },
         // Lint the package for style errors
         "lint": {
@@ -47,7 +49,12 @@
         // Run end-to-end tests
         "e2e": {
             "dependsOn": ["^e2e"],
-            "env": ["BASE_URL"]
+            "env": ["BASE_URL", "SITE_BASE_URL"]
+        },
+        // Run end-to-end tests for customers
+        "e2e-customers": {
+            "dependsOn": ["^e2e-customers"],
+            "env": ["BASE_URL", "SITE_BASE_URL"]
         },
         // Start the package in development mode
         "dev": {

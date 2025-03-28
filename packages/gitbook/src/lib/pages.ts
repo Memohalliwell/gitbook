@@ -1,11 +1,10 @@
 import {
-    Revision,
-    RevisionPage,
-    RevisionPageDocument,
-    RevisionPageGroup,
+    type Revision,
+    type RevisionPage,
+    type RevisionPageDocument,
+    type RevisionPageGroup,
     RevisionPageType,
 } from '@gitbook/api';
-import { headers } from 'next/headers';
 
 export type AncestorRevisionPage = RevisionPageDocument | RevisionPageGroup;
 
@@ -14,11 +13,11 @@ export type AncestorRevisionPage = RevisionPageDocument | RevisionPageGroup;
  */
 export function resolvePagePath(
     rootPages: Revision['pages'],
-    pagePath: string,
+    pagePath: string
 ): { page: RevisionPageDocument; ancestors: AncestorRevisionPage[] } | undefined {
     const iteratePages = (
         pages: RevisionPage[],
-        ancestors: AncestorRevisionPage[],
+        ancestors: AncestorRevisionPage[]
     ): { page: RevisionPageDocument; ancestors: AncestorRevisionPage[] } | undefined => {
         for (const page of pages) {
             if (page.type === RevisionPageType.Link || page.type === RevisionPageType.Computed) {
@@ -56,11 +55,11 @@ export function resolvePagePath(
  */
 export function resolvePageId(
     rootPages: Revision['pages'],
-    pageId: string,
+    pageId: string
 ): { page: RevisionPageDocument; ancestors: AncestorRevisionPage[] } | undefined {
     const iteratePages = (
         pages: RevisionPage[],
-        ancestors: AncestorRevisionPage[],
+        ancestors: AncestorRevisionPage[]
     ): { page: RevisionPageDocument; ancestors: AncestorRevisionPage[] } | undefined => {
         for (const page of pages) {
             if (page.type === RevisionPageType.Link || page.type === RevisionPageType.Computed) {
@@ -86,7 +85,7 @@ export function resolvePageId(
  */
 export function resolvePrevNextPages(
     rootPages: Revision['pages'],
-    page: RevisionPageDocument,
+    page: RevisionPageDocument
 ): { previous?: RevisionPageDocument; next?: RevisionPageDocument } {
     const flat = flattenPages(rootPages, (page) => !page.hidden);
 
@@ -105,12 +104,12 @@ export function resolvePrevNextPages(
 }
 
 /**
- * Resolve a page to its canonical path.
+ * Resolve a page to its canonical path. The first page of the site will return "".
  * The path will NOT start with "/".
  */
 export function getPagePath(
     rootPages: Revision['pages'],
-    page: RevisionPageDocument | RevisionPageGroup,
+    page: RevisionPageDocument | RevisionPageGroup
 ): string {
     const firstPage = resolveFirstDocument(rootPages, []);
 
@@ -122,11 +121,26 @@ export function getPagePath(
 }
 
 /**
+ * Test if a page has at least one descendant.
+ */
+export function hasPageVisibleDescendant(page: RevisionPageGroup | RevisionPageDocument): boolean {
+    return (
+        page.pages.length > 0 &&
+        page.pages.some(
+            (child) =>
+                (child.type === RevisionPageType.Link ||
+                    child.type === RevisionPageType.Document) &&
+                !child.hidden
+        )
+    );
+}
+
+/**
  * Resolve the first page document in a list of pages.
  */
 export function resolveFirstDocument(
     pages: RevisionPage[],
-    ancestors: AncestorRevisionPage[],
+    ancestors: AncestorRevisionPage[]
 ): { page: RevisionPageDocument; ancestors: AncestorRevisionPage[] } | undefined {
     for (const page of pages) {
         if (page.type === 'link') {
@@ -144,7 +158,7 @@ export function resolveFirstDocument(
 
 function resolvePageDocument(
     page: RevisionPage,
-    ancestors: AncestorRevisionPage[],
+    ancestors: AncestorRevisionPage[]
 ): { page: RevisionPageDocument; ancestors: AncestorRevisionPage[] } | undefined {
     if (page.type === RevisionPageType.Group) {
         const firstDocument = resolveFirstDocument(page.pages, [...ancestors, page]);
@@ -153,7 +167,8 @@ function resolvePageDocument(
         }
 
         return;
-    } else if (page.type === RevisionPageType.Link || page.type === RevisionPageType.Computed) {
+    }
+    if (page.type === RevisionPageType.Link || page.type === RevisionPageType.Computed) {
         return undefined;
     }
 
@@ -165,7 +180,7 @@ function resolvePageDocument(
  */
 function flattenPages(
     pages: RevisionPage[],
-    filter?: (page: RevisionPageDocument | RevisionPageGroup) => boolean,
+    filter?: (page: RevisionPageDocument | RevisionPageGroup) => boolean
 ): RevisionPageDocument[] {
     const result: RevisionPageDocument[] = [];
     for (const page of pages) {
