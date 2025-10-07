@@ -9,6 +9,8 @@ import { tcls } from '@/lib/tailwind';
 
 import styles from './ZoomImage.module.css';
 
+const PADDING = 32; // Padding around the image in the modal, in pixels
+
 /**
  * Replacement for an <img> tag that allows zooming.
  * The implementation uses the experimental View Transition API in Chrome for a smooth transition.
@@ -28,14 +30,9 @@ export function ZoomImage(
 
     // Only allow zooming when image will not actually be larger and on mobile
     React.useEffect(() => {
-        if (isTouchDevice()) {
-            return;
-        }
-
         const imageWidth = typeof width === 'number' ? width : 0;
         let viewWidth = 0;
 
-        const mediaQueryList = window.matchMedia('(min-width: 768px)');
         const resizeObserver =
             typeof ResizeObserver !== 'undefined'
                 ? new ResizeObserver((entries) => {
@@ -44,16 +41,17 @@ export function ZoomImage(
                       // Since the image is removed from the DOM when the modal is opened,
                       // We only care when the size is defined.
                       if (imgEntry && imgEntry.contentRect.width !== 0) {
-                          viewWidth = entries[0]?.contentRect.width;
-                          setPlaceholderRect(entries[0].contentRect);
+                          viewWidth = imgEntry.contentRect.width;
+                          setPlaceholderRect(imgEntry.contentRect);
                           onChange();
                       }
                   })
                 : null;
 
         const onChange = () => {
-            if (!mediaQueryList.matches) {
-                // Don't allow zooming on mobile
+            const viewInModalWidth = window.innerWidth - PADDING * 2;
+            if (viewWidth >= viewInModalWidth) {
+                // If the image will be smaller or same size as it is in the modal, disable zooming
                 setZoomable(false);
             } else if (resizeObserver && imageWidth && viewWidth && imageWidth <= viewWidth) {
                 // Image can't be zoomed if it's already rendered as it's largest size
@@ -62,10 +60,6 @@ export function ZoomImage(
                 setZoomable(true);
             }
         };
-
-        if ('addEventListener' in mediaQueryList) {
-            mediaQueryList.addEventListener('change', onChange);
-        }
 
         if (imgRef.current) {
             resizeObserver?.observe(imgRef.current);
@@ -78,9 +72,6 @@ export function ZoomImage(
 
         return () => {
             resizeObserver?.disconnect();
-            if ('removeEventListener' in mediaQueryList) {
-                mediaQueryList.removeEventListener('change', onChange);
-            }
         };
     }, [imgRef, width]);
 
@@ -251,12 +242,12 @@ function ZoomImageModal(props: {
                     'bg-tint',
                     'border',
                     'border-tint',
-                    'shadow-sm',
+                    'shadow-xs',
                     'hover:shadow-md'
                 )}
                 onClick={onClose}
             >
-                <Icon icon="compress-wide" className={tcls('size-5')} />
+                <Icon icon="close" className={tcls('size-5')} />
             </button>
         </div>
     );
@@ -289,13 +280,4 @@ function startViewTransition(callback: () => void, onEnd?: () => void) {
         callback();
         onEnd?.();
     }
-}
-
-function isTouchDevice(): boolean {
-    return (
-        'ontouchstart' in window ||
-        navigator.maxTouchPoints > 0 ||
-        // @ts-ignore
-        navigator.msMaxTouchPoints > 0
-    );
 }

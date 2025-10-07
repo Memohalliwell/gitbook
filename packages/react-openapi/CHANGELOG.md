@@ -1,5 +1,181 @@
 # @gitbook/react-openapi
 
+## 1.4.3
+
+### Patch Changes
+
+- Updated dependencies [6da3655]
+  - @gitbook/expr@1.2.0
+
+## 1.4.2
+
+### Patch Changes
+
+- Updated dependencies [3548fa6]
+  - @gitbook/expr@1.1.1
+
+## 1.4.1
+
+### Patch Changes
+
+- 24f601d: Small optim in resolveTryItPrefillForOperation
+- Updated dependencies [e1ff17e]
+- Updated dependencies [8ff1e3b]
+  - @gitbook/expr@1.1.0
+
+## 1.4.0
+
+### Minor Changes
+
+- 12c9d76: Adapt OpenAPI blocks to eval adaptive exprs & prefill TryIt config
+
+### Patch Changes
+
+- 4927e96: Add support for YAML content type in request body/example
+- 61b8507: OpenAPI: Make responses without objects clickable
+- 98e42cf: Handle OpenAPI ignored responses
+- Updated dependencies [12c9d76]
+- Updated dependencies [7fefe49]
+- Updated dependencies [360aa1c]
+  - @gitbook/openapi-parser@3.0.2
+
+## 1.3.6
+
+### Patch Changes
+
+- Updated dependencies [42c17f5]
+  - @gitbook/openapi-parser@3.0.1
+
+## 1.3.5
+
+### Patch Changes
+
+- Updated dependencies [f1a6dec]
+  - @gitbook/openapi-parser@3.0.0
+
+## 1.3.4
+
+### Patch Changes
+
+- Updated dependencies [b5ad0ce]
+  - @gitbook/openapi-parser@2.2.2
+
+## 1.3.3
+
+### Patch Changes
+
+- Updated dependencies [1738677]
+  - @gitbook/openapi-parser@2.2.1
+
+## 1.3.2
+
+### Patch Changes
+
+- Updated dependencies [bd553bc]
+  - @gitbook/openapi-parser@2.2.0
+
+## 1.3.1
+
+### Patch Changes
+
+- 957afd9: Add authorization header for OAuth2
+- 7a00880: Improve support for OAuth2 security type
+- a0c06a7: Indent JSON python code sample
+- b403962: Handle nullish OpenAPI mediaTypeObject
+- 1e013cd: Optional label in OpenAPI x-codeSamples
+- 4c9a9d0: Handle nested deprecated properties in generateSchemaExample
+- 40df91a: Deduplicate path parameters from OpenAPI spec
+- 2350baa: Support for OpenAPI Array request body
+- Updated dependencies [1e013cd]
+- Updated dependencies [4f5cbfe]
+  - @gitbook/openapi-parser@2.1.5
+
+## 1.3.0
+
+### Minor Changes
+
+- 326e28e: Design tweaks to code blocks and OpenAPI pages
+
+### Patch Changes
+
+- 42ca7e1: Fix openapi CR preview
+- 5e975ab: Fix code highlighting for HTTP
+- 580101d: Fix schemas disclosure label causing client error
+- 20ebecb: Missing top-level required OpenAPI alternatives
+- 80cb52a: Handle OpenAPI alternatives from schema.items
+- cb5598d: Handle invalid OpenAPI Responses
+- c6637b0: Use default value if string number or boolean in generateSchemaExample
+- a3ec264: Fix Python code sample "null vs None"
+- Updated dependencies [d00dc8c]
+  - @gitbook/openapi-parser@2.1.4
+
+## 1.2.1
+
+### Patch Changes
+
+- ebc39e9: Missing select icon
+- b6b09d4: Fix OpenAPI responses select placement and icon
+
+## 1.2.0
+
+### Minor Changes
+
+- d67699a: Add OpenAPI Webhook block
+
+### Patch Changes
+
+- eeb977f: Fix Python code example for JSON payload
+- 3363a18: Merge simple alternatives
+- 8ed1bda: Translate OpenAPI blocks
+- 7588cfe: Improve OpenAPIResponses examples and schemas
+- ad1dc0b: Bump scalar packages
+
+## 1.1.10
+
+### Patch Changes
+
+- 70c4182: Improve OpenAPI schema style
+- 2b6c593: Remove stable from x-stability
+- cbd768a: Improve OpenAPI codesample (add OpenAPISelect component)
+- e59076a: Improve OpenAPI schemas block ungrouped style. Classnames have changed, please refer to this PR to update GBX.
+- eedefdd: Handle optional security headers
+- 23cedd2: Hide deprecated properties in examples
+- Updated dependencies [2b6c593]
+  - @gitbook/openapi-parser@2.1.3
+
+## 1.1.9
+
+### Patch Changes
+
+- da7b369: Fix missing headers in OpenAPIResponses
+- da485f5: Fix read-only in generateSchemaExample
+- 139a805: Fix OpenAPI enum display
+
+## 1.1.8
+
+### Patch Changes
+
+- 7d0b422: Handle grouped OpenAPISchemas
+
+## 1.1.7
+
+### Patch Changes
+
+- bd35348: Fix missing alternative schemas
+- ae78fc5: Fix XML in code sample
+- 7bb37c7: Move filterSelectedOpenAPISchemas to @gitbook/openapi-parser
+- 373183a: Safe parse OpenAPI JSON schema
+- 1505ddb: Fix multiple request examples selector not showing
+- 61db166: Add OpenAPI write-only indicator
+- 5b1e01c: Support for x-stability property
+- cd99ed5: Fix spec properties rendering and missing keys
+- 813b2af: Support for x-enumDescriptions and x-gitbook-enum
+- a25fded: Replace $ref with $reference in json-decycle
+- Updated dependencies [7bb37c7]
+- Updated dependencies [5b1e01c]
+- Updated dependencies [813b2af]
+  - @gitbook/openapi-parser@2.1.2
+
 ## 1.1.6
 
 ### Patch Changes

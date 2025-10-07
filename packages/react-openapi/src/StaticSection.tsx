@@ -11,7 +11,7 @@ export function SectionHeader(props: ComponentPropsWithoutRef<'div'>) {
             {...props}
             className={clsx(
                 'openapi-section-header',
-                props.className && `${props.className}-header`
+                props.className ? `${props.className}-header` : undefined
             )}
         />
     );
@@ -42,18 +42,50 @@ export const SectionBody = forwardRef(function SectionBody(
     );
 });
 
+export function SectionFooter(props: ComponentPropsWithoutRef<'div'>) {
+    return (
+        <div
+            {...props}
+            className={clsx(
+                'openapi-section-footer',
+                props.className && `${props.className}-footer`
+            )}
+        />
+    );
+}
+
+export function SectionFooterContent(props: ComponentPropsWithoutRef<'div'>) {
+    return (
+        <div
+            {...props}
+            className={clsx(
+                'openapi-section-footer-content',
+                props.className && `${props.className}-footer-content`
+            )}
+        />
+    );
+}
+
 export function StaticSection(props: {
     className: string;
-    header: React.ReactNode;
+    header?: React.ReactNode;
     children: React.ReactNode;
+    footer?: React.ReactNode;
 }) {
-    const { className, header, children } = props;
+    const { className, header, children, footer } = props;
     return (
         <Section className={className}>
-            <SectionHeader className={className}>
-                <SectionHeaderContent className={className}>{header}</SectionHeaderContent>
-            </SectionHeader>
+            {header ? (
+                <SectionHeader className={className}>
+                    <SectionHeaderContent className={className}>{header}</SectionHeaderContent>
+                </SectionHeader>
+            ) : null}
             <SectionBody className={className}>{children}</SectionBody>
+            {footer ? (
+                <SectionFooter className={className}>
+                    <SectionFooterContent className={className}>{footer}</SectionFooterContent>
+                </SectionFooter>
+            ) : null}
         </Section>
     );
 }

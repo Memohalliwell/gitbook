@@ -1,9 +1,13 @@
 import {
+    CustomizationAIMode,
     CustomizationBackground,
     CustomizationCorners,
+    CustomizationDefaultMonospaceFont,
+    CustomizationDepth,
     CustomizationHeaderPreset,
     CustomizationIconsStyle,
     CustomizationSidebarListStyle,
+    CustomizationThemeMode,
 } from '@gitbook/api';
 import { expect } from '@playwright/test';
 import jwt from 'jsonwebtoken';
@@ -12,10 +16,11 @@ import {
     VISITOR_TOKEN_COOKIE,
     getVisitorAuthCookieName,
     getVisitorAuthCookieValue,
-} from '@/lib/visitor-token';
+} from '@/lib/visitors';
 
 import { getSiteAPIToken } from '../tests/utils';
 import {
+    type Test,
     type TestsCase,
     allDeprecatedThemePresets,
     allLocales,
@@ -30,6 +35,179 @@ import {
     waitForCookiesDialog,
     waitForNotFound,
 } from './util';
+
+const searchTestCases: Test[] = [
+    {
+        name: 'Search - AI Mode: None - Complete flow',
+        url: getCustomizationURL({
+            ai: {
+                mode: CustomizationAIMode.None,
+            },
+        }),
+        screenshot: false,
+        run: async (page) => {
+            const searchInput = page.getByTestId('search-input');
+            await searchInput.focus();
+            await expect(page.getByTestId('search-results')).toHaveCount(0); // No pop-up yet because there's no recommended questions.
+
+            // Fill search input, expecting search results
+            await searchInput.fill('gitbook');
+            await expect(page.getByTestId('search-results')).toBeVisible();
+            const pageResults = await page.getByTestId('search-page-result').all();
+            await expect(pageResults.length).toBeGreaterThanOrEqual(1);
+            const pageSectionResults = await page.getByTestId('search-page-section-result').all();
+            await expect(pageSectionResults.length).toBeGreaterThanOrEqual(2);
+            await expect(page.getByTestId('search-ask-question')).toHaveCount(0); // No AI search results with aiMode=None.
+        },
+    },
+    {
+        name: 'Search - AI Mode: None - Keyboard shortcut',
+        url: getCustomizationURL({
+            ai: {
+                mode: CustomizationAIMode.None,
+            },
+        }),
+        screenshot: false,
+        run: async (page) => {
+            await page.keyboard.press('ControlOrMeta+K');
+            await expect(page.getByTestId('search-input')).toBeFocused();
+        },
+    },
+    {
+        name: 'Search - AI Mode: None - URL query (Initial)',
+        url: `${getCustomizationURL({
+            ai: {
+                mode: CustomizationAIMode.None,
+            },
+        })}&q=`,
+        run: async (page) => {
+            await expect(page.getByTestId('search-results')).toHaveCount(0); // No pop-up yet because there's no recommended questions.
+        },
+    },
+    {
+        name: 'Search - AI Mode: None - URL query (Results)',
+        url: `${getCustomizationURL({
+            ai: {
+                mode: CustomizationAIMode.None,
+            },
+        })}&q=gitbook`,
+        run: async (page) => {
+            await expect(page.getByTestId('search-input')).toBeFocused();
+            await expect(page.getByTestId('search-input')).toHaveValue('gitbook');
+            await expect(page.getByTestId('search-results')).toBeVisible();
+        },
+    },
+    // TODO: Re-enable the following tests when we have fixed the AI Search timing out:
+    // - Search - AI Mode: Search - Complete flow
+    // - Search - AI Mode: Search - URL query (Initial)
+    {
+        name: 'Search - AI Mode: Search - URL query (Results)',
+        url: `${getCustomizationURL({
+            ai: {
+                mode: CustomizationAIMode.Search,
+            },
+        })}&q=gitbook`,
+        screenshot: false,
+        run: async (page) => {
+            await expect(page.getByTestId('search-input')).toBeFocused();
+            await expect(page.getByTestId('search-input')).toHaveValue('gitbook');
+            await expect(page.getByTestId('search-results')).toBeVisible();
+        },
+    },
+    // TODO: Re-enable the following tests when we have fixed the AI Search timing out:
+    // - Ask - AI Mode: Search - URL query (Ask initial)
+    // - Ask - AI Mode: Search - URL query (Ask results)
+    {
+        name: 'Ask - AI Mode: Assistant - Complete flow',
+        url: getCustomizationURL({
+            ai: {
+                mode: CustomizationAIMode.Assistant,
+            },
+        }),
+        screenshot: false,
+        run: async (page) => {
+            const searchInput = page.locator('css=[data-testid="search-input"]');
+
+            // Focus search input, expecting recommended questions
+            await searchInput.focus();
+            // TODO: Re-enable this part of the test when we have fixed the AI Search timing out
+            // await expect(page.getByTestId('search-results')).toBeVisible();
+            // const recommendedQuestions = await page
+            //     .getByTestId('search-recommended-question')
+            //     .all();
+            // await expect(recommendedQuestions.length).toBeGreaterThan(2); // Expect at least 3 questions
+
+            // Fill search input, expecting AI search option
+            await searchInput.fill('What is gitbook?');
+            const aiSearchResult = page.getByTestId('search-ask-question');
+            await expect(aiSearchResult).toBeVisible();
+            await aiSearchResult.click();
+            await expect(page.getByTestId('ai-chat')).toBeVisible();
+        },
+    },
+    {
+        name: 'Ask - AI Mode: Assistant - Keyboard shortcut',
+        url: getCustomizationURL({
+            ai: {
+                mode: CustomizationAIMode.Assistant,
+            },
+        }),
+        screenshot: false,
+        run: async (page) => {
+            await page.keyboard.press('ControlOrMeta+I');
+            await expect(page.getByTestId('ai-chat')).toBeVisible();
+            await expect(page.getByTestId('ai-chat-input')).toBeFocused();
+        },
+    },
+    {
+        name: 'Ask - AI Mode: Assistant - Button',
+        url: getCustomizationURL({
+            ai: {
+                mode: CustomizationAIMode.Assistant,
+            },
+        }),
+        screenshot: false,
+        run: async (page) => {
+            await page.getByTestId('ai-chat-button').click();
+            await expect(page.getByTestId('ai-chat')).toBeVisible();
+            await expect(page.getByTestId('ai-chat-input')).toBeFocused();
+        },
+    },
+    {
+        name: 'Ask - AI Mode: Assistant - URL query (Initial)',
+        url: `${getCustomizationURL({
+            ai: {
+                mode: CustomizationAIMode.Assistant,
+            },
+        })}&ask=`,
+        screenshot: false,
+        run: async (page) => {
+            await expect(page.getByTestId('search-input')).not.toBeFocused();
+            await expect(page.getByTestId('search-input')).not.toHaveValue('What is GitBook?');
+            await expect(page.getByTestId('ai-chat')).toBeVisible();
+            await expect(page.getByTestId('ai-chat-input')).toBeFocused();
+        },
+    },
+    {
+        name: 'Ask - AI Mode: Assistant - URL query (Results)',
+        url: `${getCustomizationURL({
+            ai: {
+                mode: CustomizationAIMode.Assistant,
+            },
+        })}&ask=What+is+GitBook%3F`,
+        screenshot: false,
+        run: async (page) => {
+            await expect(page.getByTestId('search-input')).not.toBeFocused();
+            await expect(page.getByTestId('search-input')).not.toHaveValue('What is GitBook?');
+            await expect(page.getByTestId('ai-chat')).toBeVisible({
+                timeout: 15_000,
+            });
+            await expect(page.getByTestId('ai-chat-message').first()).toHaveText(
+                'What is GitBook?'
+            );
+        },
+    },
+];
 
 const testCases: TestsCase[] = [
     {
@@ -50,34 +228,7 @@ const testCases: TestsCase[] = [
                     );
                 },
             },
-            {
-                name: 'Search',
-                url: '?q=',
-                screenshot: false,
-                run: async (page) => {
-                    await expect(page.getByTestId('search-results')).toBeVisible();
-                    const allItems = await page.getByTestId('search-result-item').all();
-                    // Expect at least 3 questions
-                    await expect(allItems.length).toBeGreaterThan(2);
-                },
-            },
-            {
-                name: 'Search Results',
-                url: '?q=gitbook',
-                run: async (page) => {
-                    await expect(page.getByTestId('search-results')).toBeVisible();
-                },
-            },
-            {
-                name: 'AI Search',
-                url: '?q=What+is+GitBook%3F&ask=true',
-                run: async (page) => {
-                    await expect(page.getByTestId('search-ask-answer')).toBeVisible({
-                        timeout: 15_000,
-                    });
-                },
-                screenshot: false,
-            },
+            ...searchTestCases,
             {
                 name: 'Not found',
                 url: 'content-not-found',
@@ -111,24 +262,24 @@ const testCases: TestsCase[] = [
                 name: 'Customized variant titles are displayed',
                 url: '',
                 run: async (page) => {
-                    const spaceDrowpdown = page
+                    const spaceDropdown = page
                         .locator('[data-testid="space-dropdown-button"]')
                         .locator('visible=true');
-                    await spaceDrowpdown.click();
+                    await spaceDropdown.click();
 
                     const variantSelectionDropdown = page.locator(
-                        'css=[data-testid="space-dropdown-button"] + div'
+                        'css=[data-testid="dropdown-menu"]'
                     );
                     // the customized space title
                     await expect(
-                        variantSelectionDropdown.getByRole('link', {
+                        variantSelectionDropdown.getByRole('menuitem', {
                             name: 'Multi-Variants',
                         })
                     ).toBeVisible();
 
                     // the NON-customized space title
                     await expect(
-                        variantSelectionDropdown.getByRole('link', {
+                        variantSelectionDropdown.getByRole('menuitem', {
                             name: 'RFCs',
                         })
                     ).toBeVisible();
@@ -145,14 +296,17 @@ const testCases: TestsCase[] = [
                 url: 'api-multi-versions/reference/api-reference/pets',
                 screenshot: false,
                 run: async (page) => {
-                    const spaceDrowpdown = await page
+                    const spaceDropdown = await page
                         .locator('[data-testid="space-dropdown-button"]')
                         .locator('visible=true');
-                    await spaceDrowpdown.click();
+                    await spaceDropdown.click();
 
+                    const variantSelectionDropdown = page.locator(
+                        'css=[data-testid="dropdown-menu"]'
+                    );
                     // Click the second variant in the dropdown
-                    await page
-                        .getByRole('link', {
+                    await variantSelectionDropdown
+                        .getByRole('menuitem', {
                             name: '2.0',
                         })
                         .click();
@@ -168,14 +322,18 @@ const testCases: TestsCase[] = [
                 url: 'api-multi-versions-share-links/8tNo6MeXg7CkFMzSSz81/reference/api-reference/pets',
                 screenshot: false,
                 run: async (page) => {
-                    const spaceDrowpdown = await page
+                    const spaceDropdown = await page
                         .locator('[data-testid="space-dropdown-button"]')
                         .locator('visible=true');
-                    await spaceDrowpdown.click();
+                    await spaceDropdown.click();
+
+                    const variantSelectionDropdown = page.locator(
+                        'css=[data-testid="dropdown-menu"]'
+                    );
 
                     // Click the second variant in the dropdown
-                    await page
-                        .getByRole('link', {
+                    await variantSelectionDropdown
+                        .getByRole('menuitem', {
                             name: '2.0',
                         })
                         .click();
@@ -205,14 +363,18 @@ const testCases: TestsCase[] = [
                     return `api-multi-versions-va/reference/api-reference/pets?jwt_token=${token}`;
                 },
                 run: async (page) => {
-                    const spaceDrowpdown = await page
+                    const spaceDropdown = await page
                         .locator('[data-testid="space-dropdown-button"]')
                         .locator('visible=true');
-                    await spaceDrowpdown.click();
+                    await spaceDropdown.click();
+
+                    const variantSelectionDropdown = page.locator(
+                        'css=[data-testid="dropdown-menu"]'
+                    );
 
                     // Click the second variant in the dropdown
-                    await page
-                        .getByRole('link', {
+                    await variantSelectionDropdown
+                        .getByRole('menuitem', {
                             name: '2.0',
                         })
                         .click();
@@ -258,41 +420,14 @@ const testCases: TestsCase[] = [
     },
     {
         name: 'GitBook',
-        contentBaseURL: 'https://docs.gitbook.com',
+        contentBaseURL: 'https://gitbook.com/docs/',
         tests: [
             {
                 name: 'Home',
                 url: '',
                 run: waitForCookiesDialog,
             },
-            {
-                name: 'Search',
-                url: '?q=',
-                screenshot: false,
-                run: async (page) => {
-                    await expect(page.getByTestId('search-results')).toBeVisible();
-                    const allItems = await page.getByTestId('search-result-item').all();
-                    // Expect at least 3 questions
-                    await expect(allItems.length).toBeGreaterThan(2);
-                },
-            },
-            {
-                name: 'Search Results',
-                url: '?q=gitbook',
-                run: async (page) => {
-                    await expect(page.getByTestId('search-results')).toBeVisible();
-                },
-            },
-            {
-                name: 'AI Search',
-                url: '?q=What+is+GitBook%3F&ask=true',
-                run: async (page) => {
-                    await expect(page.getByTestId('search-ask-answer')).toBeVisible({
-                        timeout: 15_000,
-                    });
-                },
-                screenshot: false,
-            },
+            ...searchTestCases,
             {
                 name: 'Not found',
                 url: 'content-not-found',
@@ -401,6 +536,28 @@ const testCases: TestsCase[] = [
                     await expect(page.locator('[data-testid="table-of-contents"]')).toBeVisible();
                 },
             },
+            {
+                name: 'With sections',
+                url: async () => {
+                    const data = await getSiteAPIToken('https://gitbook.com/docs');
+
+                    const searchParams = new URLSearchParams();
+                    searchParams.set('token', data.apiToken);
+
+                    return `url/preview/${data.site}/?${searchParams.toString()}`;
+                },
+                screenshot: false,
+                run: async (page) => {
+                    const sectionTabs = page.getByLabel('Sections');
+                    await expect(sectionTabs).toBeVisible();
+
+                    const sectionTabLinks = sectionTabs.getByRole('link');
+                    for (const link of await sectionTabLinks.all()) {
+                        const href = await link.getAttribute('href');
+                        expect(href).toMatch(/^\/url\/preview\/site_p4Xo4\/?/);
+                    }
+                },
+            },
         ],
     },
     {
@@ -416,6 +573,91 @@ const testCases: TestsCase[] = [
                     expect(response?.status()).toBe(200);
                     expect(response?.headers()['content-type']).toContain('text/markdown');
                 },
+            },
+        ],
+    },
+    {
+        name: 'llms.txt',
+        skip: process.env.ARGOS_BUILD_NAME !== 'v2-vercel',
+        contentBaseURL: 'https://gitbook.gitbook.io/test-gitbook-open/',
+        tests: [
+            {
+                name: 'llms.txt',
+                url: 'llms.txt',
+                screenshot: false,
+                run: async (_page, response) => {
+                    expect(response?.status()).toBe(200);
+                    expect(response?.headers()['content-type']).toContain('text/markdown');
+                },
+            },
+        ],
+    },
+    {
+        name: 'llms-full.txt',
+        skip: process.env.ARGOS_BUILD_NAME !== 'v2-vercel',
+        contentBaseURL: 'https://gitbook.gitbook.io/test-gitbook-open/',
+        tests: [
+            {
+                name: 'llms-full.txt',
+                url: 'llms-full.txt',
+                screenshot: false,
+                run: async (_page, response) => {
+                    expect(response?.status()).toBe(200);
+                    expect(response?.headers()['content-type']).toContain('text/markdown');
+                },
+            },
+        ],
+    },
+    {
+        name: '[page].md',
+        skip: process.env.ARGOS_BUILD_NAME !== 'v2-vercel',
+        contentBaseURL: 'https://gitbook.gitbook.io/test-gitbook-open/',
+        tests: [
+            {
+                name: 'blocks.md',
+                url: 'blocks.md',
+                screenshot: false,
+                run: async (_page, response) => {
+                    expect(response?.status()).toBe(200);
+                    expect(response?.headers()['content-type']).toContain('text/markdown');
+                },
+            },
+        ],
+    },
+    {
+        name: 'Site subdirectory (proxy)',
+        skip: process.env.ARGOS_BUILD_NAME !== 'v2-vercel',
+        contentBaseURL: 'https://nextjs-gbo-proxy.vercel.app/documentation/',
+        tests: [
+            {
+                name: 'Main',
+                url: '',
+                fullPage: true,
+            },
+        ],
+    },
+    {
+        name: 'Site subdirectory (proxy) with VA',
+        skip: process.env.ARGOS_BUILD_NAME !== 'v2-vercel',
+        contentBaseURL: 'https://nextjs-gbo-proxy-va.vercel.app/va/docs/',
+        tests: [
+            {
+                name: 'Main',
+                url: () => {
+                    const privateKey =
+                        'rqSfA6x7eAKx1qDRCDq9aCXwivpUvQ8YkXeDdFvCCUa9QchIcM7pF1iJ4o7AGOU49spmOWjKoIPtX0pVUVQ81w==';
+                    const token = jwt.sign(
+                        {
+                            name: 'gitbook-open-tests',
+                        },
+                        privateKey,
+                        {
+                            expiresIn: '24h',
+                        }
+                    );
+                    return `?jwt_token=${token}`;
+                },
+                fullPage: true,
             },
         ],
     },
@@ -522,8 +764,18 @@ const testCases: TestsCase[] = [
                 run: waitForCookiesDialog,
             },
             {
+                name: 'Icons',
+                url: 'blocks/icons',
+                run: waitForCookiesDialog,
+            },
+            {
                 name: 'Links',
                 url: 'blocks/links',
+                run: waitForCookiesDialog,
+            },
+            {
+                name: 'Buttons',
+                url: 'blocks/buttons',
                 run: waitForCookiesDialog,
             },
             {
@@ -584,6 +836,7 @@ const testCases: TestsCase[] = [
                 name: 'Stepper',
                 url: 'blocks/stepper',
             },
+            { name: 'Columns', url: 'blocks/columns' },
         ],
     },
     {
@@ -598,6 +851,16 @@ const testCases: TestsCase[] = [
             {
                 name: 'With cover',
                 url: 'page-options/page-with-cover',
+                run: waitForCookiesDialog,
+            },
+            {
+                name: 'With cover for dark mode',
+                url: `page-options/page-with-dark-cover${getCustomizationURL({
+                    themes: {
+                        default: CustomizationThemeMode.Dark,
+                        toggeable: false,
+                    },
+                })}`,
                 run: waitForCookiesDialog,
             },
             {
@@ -677,6 +940,15 @@ const testCases: TestsCase[] = [
                         toggeable: false,
                     },
                 }),
+                run: waitForCookiesDialog,
+            },
+            {
+                name: `With custom monospace font - Theme mode ${themeMode}`,
+                url: `blocks/code${getCustomizationURL({
+                    styling: {
+                        monospaceFont: CustomizationDefaultMonospaceFont.SpaceMono,
+                    },
+                })}`,
                 run: waitForCookiesDialog,
             },
             // New site themes
@@ -769,7 +1041,33 @@ const testCases: TestsCase[] = [
                 }),
                 run: waitForCookiesDialog,
             },
+            {
+                name: `With flat and circular corners - Theme mode ${themeMode}`,
+                url: getCustomizationURL({
+                    styling: {
+                        depth: CustomizationDepth.Flat,
+                        corners: CustomizationCorners.Circular,
+                    },
+                }),
+                run: waitForCookiesDialog,
+            },
         ]),
+    },
+    {
+        name: 'Page actions',
+        contentBaseURL: 'https://gitbook.gitbook.io/test-gitbook-open/',
+        tests: [
+            {
+                name: 'Without page actions',
+                url: getCustomizationURL({
+                    pageActions: {
+                        markdown: false,
+                        externalAI: false,
+                    },
+                }),
+                run: waitForCookiesDialog,
+            },
+        ],
     },
     {
         name: 'Ads',
@@ -797,7 +1095,7 @@ const testCases: TestsCase[] = [
                     ).toBeVisible();
                     const url = page.url();
                     expect(url.includes('shared-space-uno')).toBeTruthy(); // same uno site
-                    expect(url.endsWith('/shared')).toBeTruthy(); // correct page
+                    expect(url.endsWith('/shared/')).toBeTruthy(); // correct page
                 },
                 screenshot: false,
             },
@@ -817,7 +1115,7 @@ const testCases: TestsCase[] = [
                     ).toBeVisible();
                     const url = page.url();
                     expect(url.includes('shared-space-dos')).toBeTruthy(); // same dos site
-                    expect(url.endsWith('/shared')).toBeTruthy(); // correct page
+                    expect(url.endsWith('/shared/')).toBeTruthy(); // correct page
                 },
                 screenshot: false,
             },
@@ -832,6 +1130,20 @@ const testCases: TestsCase[] = [
                 url: 'a/redirect/to/sso',
                 run: async (page) => {
                     await expect(page.locator('h1')).toHaveText('SSO');
+                },
+                screenshot: false,
+            },
+        ],
+    },
+    {
+        name: 'Content Redirects',
+        contentBaseURL: 'https://gitbook-open-e2e-sites.gitbook.io/gitbook-doc/',
+        tests: [
+            {
+                name: 'Redirect to new location',
+                url: '/content-editor/editing-content/inline/redirect-test',
+                run: async (page) => {
+                    await expect(page.locator('h1')).toHaveText('Redirect test');
                 },
                 screenshot: false,
             },

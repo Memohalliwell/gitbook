@@ -1,153 +1,276 @@
-import 'server-only';
-
-import {
-    type RevisionPage,
-    type RevisionPageDocument,
-    type RevisionPageGroup,
-    RevisionPageType,
-} from '@gitbook/api';
-import { headers } from 'next/headers';
-
-import { GITBOOK_APP_URL } from '@v2/lib/env';
-import { getPagePath } from './pages';
-import { withLeadingSlash, withTrailingSlash } from './paths';
-import { assertIsNotV2 } from './v2';
-
-export interface PageHrefContext {
-    /**
-     * If defined, we are generating a PDF of the specific page IDs,
-     * and these pages will be rendered in the same HTML output.
-     */
-    pdf?: string[];
-}
+import path from 'node:path';
+import { getPagePath } from '@/lib/pages';
+import { withLeadingSlash, withTrailingSlash } from '@/lib/paths';
+import type { RevisionPage, RevisionPageDocument, RevisionPageGroup } from '@gitbook/api';
+import type { Link, Root } from 'mdast';
+import { visit } from 'unist-util-visit';
+import warnOnce from 'warn-once';
+import { checkIsAnchor, checkIsExternalURL } from './urls';
 
 /**
- * Return the base path for the current request.
- * The value will start and finish with /
- */
-export async function getBasePath(): Promise<string> {
-    assertIsNotV2();
-    const headersList = await headers();
-    const path = headersList.get('x-gitbook-basepath') ?? '/';
-
-    return withTrailingSlash(withLeadingSlash(path));
-}
-
-/**
- * Return the site base path for the current request.
- * The value will start and finish with /
- */
-export async function getSiteBasePath(): Promise<string> {
-    assertIsNotV2();
-    const headersList = await headers();
-    const path = headersList.get('x-gitbook-site-basepath') ?? '/';
-
-    return withTrailingSlash(withLeadingSlash(path));
-}
-
-/**
- * Return the current host for the current request.
- */
-export async function getHost(): Promise<string> {
-    assertIsNotV2();
-    const headersList = await headers();
-    const mode = headersList.get('x-gitbook-mode');
-    if (mode === 'proxy') {
-        return headersList.get('x-forwarded-host') ?? '';
-    }
-
-    return headersList.get('x-gitbook-host') ?? headersList.get('host') ?? '';
-}
-
-/**
- * Return the root URL for the GitBook Open instance (not the content).
- * Use `baseUrl` to get the base URL for the current content.
+ * Generic interface to generate links based on a given context.
  *
- * The URL will end with "/".
+ * URL levels:
+ *
+ * https://docs.company.com/basename/section/variant/page
+ *
+ * toPathInSpace('some/path') => /basename/section/variant/some/path
+ * toPathInSite('some/path') => /basename/some/path
+ * toPathForPage({ pages, page }) => /basename/section/variant/some/path
+ * toAbsoluteURL('some/path') => https://docs.company.com/some/path
  */
-export async function getRootUrl(): Promise<string> {
-    assertIsNotV2();
-    const [headersList, host] = await Promise.all([headers(), getHost()]);
-    const protocol = headersList.get('x-forwarded-proto') ?? 'https';
-    let path = headersList.get('x-gitbook-origin-basepath') ?? '/';
+export interface GitBookLinker {
+    /**
+     * Generate an absolute path for a relative path to the current content.
+     */
+    toPathInSpace(relativePath: string): string;
 
-    if (!path.startsWith('/')) {
-        path = `/${path}`;
+    /**
+     * Generate an absolute path for a relative path to the current site.
+     */
+    toPathInSite(relativePath: string): string;
+
+    /**
+     * Transform an absolute path in a site, to a relative path from the root of the site.
+     */
+    toRelativePathInSite(absolutePath: string): string;
+
+    /**
+     * Generate an absolute path for a page in the current content.
+     * The result should NOT be passed to `toPathInContent`.
+     */
+    toPathForPage(input: {
+        pages: RevisionPage[];
+        page: RevisionPageDocument | RevisionPageGroup;
+        anchor?: string;
+    }): string;
+
+    /**
+     * Generate an absolute URL for a given path relative to the host of the current content.
+     */
+    toAbsoluteURL(absolutePath: string): string;
+
+    /**
+     * Generate a link (URL or path) for a GitBook content URL (url of another site)
+     */
+    toLinkForContent(url: string): string;
+
+    /**
+     * Create a new linker that overrides some options of the current one.
+     */
+    fork(override: { spaceBasePath: string }): GitBookLinker;
+
+    /**
+     * Site base path used to create this linker.
+     */
+    siteBasePath: string;
+
+    /**
+     * Space base path used to create this linker.
+     */
+    spaceBasePath: string;
+}
+
+/**
+ * Create a linker to resolve links in a context being served on a specific URL.
+ */
+export function createLinker(
+    /** Where the top of the space is served on */
+    servedOn: {
+        protocol?: string;
+        host?: string;
+
+        /** The base path of the space */
+        spaceBasePath: string;
+
+        /** The base path of the site */
+        siteBasePath: string;
     }
+): GitBookLinker {
+    warnOnce(!servedOn.host, 'No host provided to createLinker. It can lead to issues with links.');
 
-    if (!path.endsWith('/')) {
-        path = `${path}/`;
+    const siteBasePath = withTrailingSlash(withLeadingSlash(servedOn.siteBasePath));
+    const spaceBasePath = withTrailingSlash(withLeadingSlash(servedOn.spaceBasePath));
+
+    const linker: GitBookLinker = {
+        get siteBasePath() {
+            return siteBasePath;
+        },
+
+        get spaceBasePath() {
+            return spaceBasePath;
+        },
+
+        fork(override: {
+            spaceBasePath: string;
+        }) {
+            return createLinker({
+                ...servedOn,
+                spaceBasePath: override.spaceBasePath,
+            });
+        },
+
+        toPathInSpace(relativePath: string): string {
+            return joinPaths(spaceBasePath, relativePath);
+        },
+
+        toPathInSite(relativePath: string): string {
+            return joinPaths(siteBasePath, relativePath);
+        },
+
+        toRelativePathInSite(absolutePath: string): string {
+            const normalizedPath = withLeadingSlash(absolutePath);
+
+            if (!normalizedPath.startsWith(servedOn.siteBasePath)) {
+                return normalizedPath;
+            }
+
+            return normalizedPath.slice(servedOn.siteBasePath.length);
+        },
+
+        toPathForPage({ pages, page, anchor }) {
+            return linker.toPathInSpace(getPagePath(pages, page)) + (anchor ? `#${anchor}` : '');
+        },
+
+        toAbsoluteURL(absolutePath: string): string {
+            // If the path is already a full URL, we return it as is.
+            if (URL.canParse(absolutePath)) {
+                return absolutePath;
+            }
+
+            if (!servedOn.host) {
+                return absolutePath;
+            }
+
+            return `${servedOn.protocol ?? 'https:'}//${joinPaths(servedOn.host, absolutePath)}`;
+        },
+
+        toLinkForContent(rawURL: string): string {
+            const url = new URL(rawURL);
+
+            // If the link points to a content in the same site, we return an absolute path
+            // instead of a full URL; it makes it possible to use router navigation
+            if (url.hostname === servedOn.host && url.pathname.startsWith(servedOn.siteBasePath)) {
+                return url.pathname + url.search + url.hash;
+            }
+
+            return rawURL;
+        },
+    };
+
+    return linker;
+}
+
+/**
+ * Create a new linker that intercepts links that belongs to the published site and rewrite them
+ * relative to the URL being served.
+ *
+ * It is needed for preview of site where the served URL (http://preview/site_abc)
+ * is different from the actual published site URL (https://docs.company.com).
+ */
+export function linkerForPublishedURL(linker: GitBookLinker, rawSitePublishedURL: string) {
+    const sitePublishedURL = new URL(rawSitePublishedURL);
+
+    return {
+        ...linker,
+        toLinkForContent(rawURL: string): string {
+            const url = new URL(rawURL);
+
+            // If the link is part of the published site, we rewrite it to be part of the preview site.
+            if (
+                url.hostname === sitePublishedURL.hostname &&
+                url.pathname.startsWith(sitePublishedURL.pathname)
+            ) {
+                // When detecting that the url has been computed as apart of the published site,
+                // we rewrite it to be part of the preview site.
+                const extractedPath = url.pathname.slice(sitePublishedURL.pathname.length);
+                return linker.toPathInSite(extractedPath) + url.search + url.hash;
+            }
+
+            return linker.toLinkForContent(rawURL);
+        },
+    };
+}
+
+/**
+ * Create a new linker that always returns absolute URLs.
+ */
+export function linkerWithAbsoluteURLs(linker: GitBookLinker): GitBookLinker {
+    return {
+        ...linker,
+        toPathInSpace: (path) => linker.toAbsoluteURL(linker.toPathInSpace(path)),
+        toPathInSite: (path) => linker.toAbsoluteURL(linker.toPathInSite(path)),
+        toPathForPage: (input) => linker.toAbsoluteURL(linker.toPathForPage(input)),
+    };
+}
+
+/**
+ * Create a new linker that resolves links relative to a new spaceBasePath in the current site.
+ */
+export function linkerWithOtherSpaceBasePath(
+    linker: GitBookLinker,
+    {
+        spaceBasePath,
+    }: {
+        /**
+         * The base path of the space. It should be relative to the root of the site.
+         */
+        spaceBasePath: string;
     }
+): GitBookLinker {
+    const newLinker: GitBookLinker = {
+        ...linker,
+        toPathInSpace(relativePath: string): string {
+            return linker.toPathInSite(joinPaths(spaceBasePath, relativePath));
+        },
+        // implementation matches the base linker toPathForPage, but decouples from using `this` to
+        // ensure we always use the updates `toPathInSpace` method.
+        toPathForPage({ pages, page, anchor }) {
+            return newLinker.toPathInSpace(getPagePath(pages, page)) + (anchor ? `#${anchor}` : '');
+        },
+    };
 
-    return `${protocol}://${host}${path}`;
+    return newLinker;
+}
+
+function joinPaths(prefix: string, path: string): string {
+    const prefixPath = prefix.endsWith('/') ? prefix : `${prefix}/`;
+    const suffixPath = path.startsWith('/') ? path.slice(1) : path;
+    const pathWithoutTrailingSlash = removeTrailingSlash(prefixPath + suffixPath);
+    return pathWithoutTrailingSlash === '' ? '/' : pathWithoutTrailingSlash;
+}
+
+function removeTrailingSlash(path: string): string {
+    return path.endsWith('/') ? path.slice(0, -1) : path;
 }
 
 /**
- * Return the base URL for the current content.
- * The URL will end with "/".
+ * Re-writes the URL of every relative <a> link so it is expressed from the site-root.
  */
-export async function getBaseUrl(): Promise<string> {
-    assertIsNotV2();
-    const [headersList, host, basePath] = await Promise.all([headers(), getHost(), getBasePath()]);
-    const protocol = headersList.get('x-forwarded-proto') ?? 'https';
-    return `${protocol}://${host}${basePath}`;
-}
+export function relativeToAbsoluteLinks(
+    linker: GitBookLinker,
+    tree: Root,
+    currentPagePath: string
+): Root {
+    const currentDir = path.posix.dirname(currentPagePath);
 
-/**
- * Create an absolute href in the current content.
- */
-export async function getAbsoluteHref(href: string, withHost = false): Promise<string> {
-    assertIsNotV2();
-    const base = withHost ? await getBaseUrl() : await getBasePath();
-    return `${base}${href.startsWith('/') ? href.slice(1) : href}`;
-}
+    visit(tree, 'link', (node: Link) => {
+        const original = node.url;
 
-/**
- * Create an absolute href in the GitBook application.
- */
-export function getGitbookAppHref(pathname: string): string {
-    const appUrl = new URL(GITBOOK_APP_URL);
-    appUrl.pathname = pathname;
-
-    return appUrl.toString();
-}
-
-/**
- * Create a link to a page path in the current space.
- */
-export async function getPageHref(
-    rootPages: RevisionPage[],
-    page: RevisionPageDocument | RevisionPageGroup,
-    context: PageHrefContext = {},
-    /** Anchor to link to in the page. */
-    anchor?: string
-): Promise<string> {
-    assertIsNotV2();
-    const { pdf } = context;
-
-    if (pdf) {
-        if (pdf.includes(page.id)) {
-            return `#${getPagePDFContainerId(page, anchor)}`;
+        // Skip anchors, mailto:, http(s):, protocol-like, or already-rooted paths
+        if (checkIsExternalURL(original) || checkIsAnchor(original) || original.startsWith('/')) {
+            return;
         }
-        if (page.type === RevisionPageType.Group) {
-            return '#';
-        }
 
-        // Use an absolute URL to the page
-        return page.urls.app;
-    }
+        // Resolve against the current page’s directory and strip any leading “/” or "../"
+        // Sometimes the path can be "../" if we are on the default section
+        // but it means we are just at the root of the site.
+        const pathInPage = path.posix
+            .normalize(path.posix.join(currentDir, original))
+            .replace(/^[\/\.]+/, '');
 
-    const href =
-        (await getAbsoluteHref(getPagePath(rootPages, page))) + (anchor ? `#${anchor}` : '');
-    return href;
-}
+        node.url = linker.toAbsoluteURL(linker.toPathInSpace(pathInPage));
+    });
 
-/**
- * Create the HTML ID for the container of a page during a PDF rendering.
- */
-export function getPagePDFContainerId(
-    page: RevisionPageDocument | RevisionPageGroup,
-    anchor?: string
-): string {
-    return `pdf-page-${page.id}${anchor ? `-${anchor}` : ''}`;
+    return tree;
 }

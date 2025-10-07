@@ -1,6 +1,4 @@
 import {
-    CustomizationCorners,
-    CustomizationHeaderPreset,
     CustomizationIconsStyle,
     CustomizationSidebarBackgroundStyle,
     CustomizationSidebarListStyle,
@@ -23,38 +21,22 @@ import {
 import { IconStyle, IconsProvider } from '@gitbook/icons';
 import * as ReactDOM from 'react-dom';
 
-import { getFontData } from '@/fonts';
-import { fontNotoColorEmoji, ibmPlexMono } from '@/fonts/default';
+import { type FontData, getFontData } from '@/fonts';
+import { fontNotoColorEmoji, fonts } from '@/fonts/default';
 import { getSpaceLanguage } from '@/intl/server';
 import { getAssetURL } from '@/lib/assets';
 import { tcls } from '@/lib/tailwind';
 
-import { ClientContexts } from './ClientContexts';
+import { RootLayoutClientContexts } from './RootLayoutClientContexts';
 
 import '@gitbook/icons/style.css';
 import './globals.css';
-import { GITBOOK_FONTS_URL, GITBOOK_ICONS_TOKEN, GITBOOK_ICONS_URL } from '@v2/lib/env';
+import type { GitBookAnyContext } from '@/lib/context';
+import { GITBOOK_FONTS_URL, GITBOOK_ICONS_TOKEN, GITBOOK_ICONS_URL } from '@/lib/env';
+import { defaultCustomization } from '@/lib/utils';
 import { AnnouncementDismissedScript } from '../Announcement';
 
-/**
- * Layout shared between the content and the PDF renderer.
- * It takes care of setting the theme and the language.
- */
-export async function CustomizationRootLayout(props: {
-    forcedTheme?: CustomizationThemeMode | null;
-    customization: SiteCustomizationSettings;
-    children: React.ReactNode;
-}) {
-    const { customization, forcedTheme, children } = props;
-
-    const language = getSpaceLanguage(customization);
-    const tintColor = getTintColor(customization);
-    const mixColor = getTintMixColor(customization.styling.primaryColor, tintColor);
-    const sidebarStyles = getSidebarStyles(customization);
-    const { infoColor, successColor, warningColor, dangerColor } = getSemanticColors(customization);
-    const fontData = getFontData(customization.styling.font);
-
-    // Preconnect and preload custom fonts if needed
+function preloadFont(fontData: FontData) {
     if (fontData.type === 'custom') {
         ReactDOM.preconnect(GITBOOK_FONTS_URL);
         fontData.preloadSources
@@ -68,26 +50,57 @@ export async function CustomizationRootLayout(props: {
                 });
             });
     }
+}
+
+/**
+ * Layout shared between the content and the PDF renderer.
+ * It takes care of setting the theme and the language.
+ */
+export async function CustomizationRootLayout(props: {
+    forcedTheme?: CustomizationThemeMode | null;
+    context: GitBookAnyContext;
+    children: React.ReactNode;
+}) {
+    const { context, forcedTheme, children } = props;
+    const customization =
+        'customization' in context ? context.customization : defaultCustomization();
+
+    const language = getSpaceLanguage(context);
+    const tintColor = getTintColor(customization);
+    const mixColor = getTintMixColor(customization.styling.primaryColor, tintColor);
+    const sidebarStyles = getSidebarStyles(customization);
+    const { infoColor, successColor, warningColor, dangerColor } = getSemanticColors(customization);
+    const fontData = getFontData(customization.styling.font, 'content');
+    // Temporarily add a if here while the cache is being warmed up.
+    // We can remove the condition after 14-07-2025.
+    const monospaceFontData = customization.styling.monospaceFont
+        ? getFontData(customization.styling.monospaceFont, 'mono')
+        : {
+              type: 'default' as const,
+              variable: fonts.IBMPlexMono.variable,
+          };
+
+    // Preconnect and preload custom fonts if needed
+    preloadFont(fontData);
+    preloadFont(monospaceFontData);
 
     return (
         <html
             suppressHydrationWarning
             lang={customization.internationalization.locale}
             className={tcls(
-                customization.header.preset === CustomizationHeaderPreset.None
-                    ? 'site-header-none'
-                    : 'scroll-pt-[76px]', // Take the sticky header in consideration for the scrolling
-                customization.styling.corners === CustomizationCorners.Straight
-                    ? ' straight-corners'
-                    : '',
+                customization.styling.corners && `${customization.styling.corners}-corners`,
                 'theme' in customization.styling && `theme-${customization.styling.theme}`,
                 tintColor ? ' tint' : 'no-tint',
                 sidebarStyles.background && `sidebar-${sidebarStyles.background}`,
                 sidebarStyles.list && `sidebar-list-${sidebarStyles.list}`,
                 'links' in customization.styling && `links-${customization.styling.links}`,
+                'depth' in customization.styling && `depth-${customization.styling.depth}`,
                 fontNotoColorEmoji.variable,
-                ibmPlexMono.variable,
-                fontData.type === 'default' ? fontData.variable : 'font-custom',
+                monospaceFontData.type === 'default' ? monospaceFontData.variable : null,
+                fontData.type === 'default'
+                    ? [fontData.variable, `font-${customization.styling.font}`]
+                    : null,
 
                 // Set the dark/light class statically to avoid flashing and make it work when JS is disabled
                 (forcedTheme ?? customization.themes.default) === CustomizationThemeMode.Dark
@@ -102,6 +115,9 @@ export async function CustomizationRootLayout(props: {
 
                 {/* Inject custom font @font-face rules */}
                 {fontData.type === 'custom' ? <style>{fontData.fontFaceRules}</style> : null}
+                {monospaceFontData.type === 'custom' ? (
+                    <style>{monospaceFontData.fontFaceRules}</style>
+                ) : null}
 
                 {/* Inject a script to detect if the announcmeent banner has been dismissed */}
                 {'announcement' in customization && customization.announcement?.enabled ? (
@@ -128,7 +144,12 @@ export async function CustomizationRootLayout(props: {
                                     customization.styling.primaryColor.light
                             )
                         };
-                        --header-link: ${hexToRgb(customization.header.linkColor?.light ?? colorContrast(tintColor?.light ?? customization.styling.primaryColor.light))};
+                        --header-link: ${hexToRgb(
+                            customization.header.linkColor?.light ??
+                                colorContrast(
+                                    tintColor?.light ?? customization.styling.primaryColor.light
+                                )
+                        )};
 
                         ${generateColorVariable('info', infoColor.light)}
                         ${generateColorVariable('warning', warningColor.light)}
@@ -142,7 +163,12 @@ export async function CustomizationRootLayout(props: {
                         ${generateColorVariable('neutral', DEFAULT_TINT_COLOR, { darkMode: true })}
 
                         --header-background: ${hexToRgb(customization.header.backgroundColor?.dark ?? tintColor?.dark ?? customization.styling.primaryColor.dark)};
-                        --header-link: ${hexToRgb(customization.header.linkColor?.dark ?? colorContrast(tintColor?.dark ?? customization.styling.primaryColor.dark))};
+                        --header-link: ${hexToRgb(
+                            customization.header.linkColor?.dark ??
+                                colorContrast(
+                                    tintColor?.dark ?? customization.styling.primaryColor.dark
+                                )
+                        )};
 
                         ${generateColorVariable('info', infoColor.dark, { darkMode: true })}
                         ${generateColorVariable('warning', warningColor.dark, { darkMode: true })}
@@ -151,16 +177,7 @@ export async function CustomizationRootLayout(props: {
                     }
                 `}</style>
             </head>
-            <body
-                className={tcls(
-                    'bg-tint-base',
-                    'theme-muted:bg-tint-subtle',
-                    'theme-bold-tint:bg-tint-subtle',
-
-                    'theme-gradient:bg-gradient-primary',
-                    'theme-gradient-tint:bg-gradient-tint'
-                )}
-            >
+            <body className="site-background">
                 <IconsProvider
                     assetsURL={GITBOOK_ICONS_URL}
                     assetsURLToken={GITBOOK_ICONS_TOKEN}
@@ -175,7 +192,9 @@ export async function CustomizationRootLayout(props: {
                             : null) || IconStyle.Regular
                     }
                 >
-                    <ClientContexts language={language}>{children}</ClientContexts>
+                    <RootLayoutClientContexts language={language}>
+                        {children}
+                    </RootLayoutClientContexts>
                 </IconsProvider>
             </body>
         </html>

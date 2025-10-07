@@ -2,10 +2,15 @@
     "extends": ["//"],
     "tasks": {
         "generate": {
-            "outputs": ["public/~gitbook/static/icons/**/*", "public/~gitbook/static/math/**/*"]
+            "outputs": [
+                "public/~gitbook/static/icons/**/*",
+                "public/~gitbook/static/math/**/*",
+                "public/~gitbook/static/embed/**/*"
+            ],
+            "dependsOn": ["^generate", "@gitbook/embed#build"]
         },
         "typecheck": {
-            "dependsOn": ["^typecheck"]
+            "dependsOn": ["^typecheck", "generate"]
         }
     }
 }

@@ -13,10 +13,10 @@ import { getColumnAlignment } from './utils';
      3. Auto-size is turned off without setting a width, we then default to a fixed width of 100px
 */
 export function ViewGrid(props: TableViewProps<DocumentTableViewGrid>) {
-    const { block, view, records, style } = props;
+    const { block, view, records, style, context } = props;
 
     /* Calculate how many columns are auto-sized vs fixed width */
-    const columnWidths = view.columnWidths;
+    const columnWidths = context.mode === 'print' ? undefined : view.columnWidths;
     const autoSizedColumns = view.columns.filter((column) => !columnWidths?.[column]);
     const fixedColumns = view.columns.filter((column) => columnWidths?.[column]);
 
@@ -25,7 +25,9 @@ export function ViewGrid(props: TableViewProps<DocumentTableViewGrid>) {
     /* Only show the header when configured and not empty */
     const withHeader =
         !view.hideHeader &&
-        view.columns.some((columnId) => block.data.definition[columnId].title.trim().length > 0);
+        view.columns.some(
+            (columnId) => (block.data.definition[columnId]?.title.trim().length ?? 0) > 0
+        );
 
     return (
         <div className={tcls(style, styles.tableWrapper)}>
@@ -38,20 +40,20 @@ export function ViewGrid(props: TableViewProps<DocumentTableViewGrid>) {
                         className={tcls(
                             tableWidth,
                             styles.rowGroup,
-                            'straight-corners:rounded-none'
+                            'straight-corners:rounded-none',
+                            'circular-corners:rounded-xl'
                         )}
                     >
                         <div role="row" className={tcls('flex', 'w-full')}>
                             {view.columns.map((column) => {
-                                const alignment = getColumnAlignment(block.data.definition[column]);
+                                const definition = block.data.definition[column]!;
                                 return (
                                     <div
                                         key={column}
                                         role="columnheader"
                                         className={tcls(
                                             styles.columnHeader,
-                                            alignment === 'right' ? 'text-right' : null,
-                                            alignment === 'center' ? 'text-center' : null
+                                            getColumnAlignment(definition)
                                         )}
                                         style={{
                                             width: getColumnWidth({
@@ -62,9 +64,9 @@ export function ViewGrid(props: TableViewProps<DocumentTableViewGrid>) {
                                             }),
                                             minWidth: columnWidths?.[column] || '100px',
                                         }}
-                                        title={block.data.definition[column].title}
+                                        title={definition.title}
                                     >
-                                        {block.data.definition[column].title}
+                                        {definition.title}
                                     </div>
                                 );
                             })}

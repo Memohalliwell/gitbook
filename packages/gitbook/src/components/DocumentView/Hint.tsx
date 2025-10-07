@@ -3,17 +3,28 @@ import { Icon, type IconName } from '@gitbook/icons';
 
 import { type ClassValue, tcls } from '@/lib/tailwind';
 
+import { getSpaceLanguage, tString } from '@/intl/server';
+import { languages } from '@/intl/translations';
 import { Block, type BlockProps } from './Block';
 import { Blocks } from './Blocks';
 import { getBlockTextStyle } from './spacing';
 
-export function Hint(props: BlockProps<DocumentBlockHint>) {
-    const { block, style, ancestorBlocks, ...contextProps } = props;
+export function Hint({
+    block,
+    style,
+    ancestorBlocks,
+    ...contextProps
+}: BlockProps<DocumentBlockHint>) {
     const hintStyle = HINT_STYLES[block.data.style] ?? HINT_STYLES.info;
-    const firstLine = getBlockTextStyle(block.nodes[0]);
+    const firstNode = block.nodes[0]!;
+    const firstLine = getBlockTextStyle(firstNode);
+    const hasHeading = ['heading-1', 'heading-2', 'heading-3'].includes(firstNode.type);
 
-    const firstNode = block.nodes[0];
-    const hasHeading = ['heading-1', 'heading-2', 'heading-3'].includes(block.nodes[0].type);
+    const language = contextProps.context.contentContext
+        ? getSpaceLanguage(contextProps.context.contentContext)
+        : languages.en;
+
+    const label = tString(language, `hint_${block.data.style}`);
 
     return (
         <div
@@ -21,8 +32,9 @@ export function Hint(props: BlockProps<DocumentBlockHint>) {
                 'hint',
                 'transition-colors',
                 'rounded-md',
-                hasHeading ? 'rounded-l' : null,
+                hasHeading ? 'rounded-l-sm' : null,
                 'straight-corners:rounded-none',
+                'circular-corners:rounded-xl',
                 'overflow-hidden',
                 hasHeading ? ['border-l-2', hintStyle.containerWithHeader] : hintStyle.container,
 
@@ -34,6 +46,8 @@ export function Hint(props: BlockProps<DocumentBlockHint>) {
 
                 style
             )}
+            aria-label={label}
+            role="note"
         >
             <div
                 className={tcls(
@@ -51,8 +65,10 @@ export function Hint(props: BlockProps<DocumentBlockHint>) {
             {hasHeading ? (
                 <Block
                     style={tcls(
-                        'flip-heading-hash p-4 pl-3 text-[1em] *:mt-0',
-                        hasHeading ? hintStyle.header : null
+                        'w-full items-start py-4! pl-3 text-[1em] *:flex-none',
+                        // Heading hash styles
+                        'flip-heading-hash pr-8',
+                        hintStyle.header
                     )}
                     ancestorBlocks={[...ancestorBlocks, block]}
                     {...contextProps}
@@ -104,7 +120,7 @@ const HINT_STYLES: {
             '[&_.can-override-text]:text-neutral-strong',
         ],
         container:
-            'bg-info border-info theme-muted-tint:bg-info-solid/2 theme-bold-tint:bg-info-solid/2',
+            'bg-info border-info theme-muted-tint:bg-info-solid/2 [html.sidebar-filled.theme-bold.tint_&]:bg-info-solid/2',
         containerWithHeader: 'border-info-solid bg-info-subtle',
     },
     warning: {

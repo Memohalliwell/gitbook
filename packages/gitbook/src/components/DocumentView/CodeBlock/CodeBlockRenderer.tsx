@@ -9,11 +9,9 @@ import type { BlockProps } from '../Block';
 import { CopyCodeButton } from './CopyCodeButton';
 import type { HighlightLine, HighlightToken } from './highlight';
 
-import './theme.css';
-import './CodeBlockRenderer.css';
-
 type CodeBlockRendererProps = Pick<BlockProps<DocumentBlockCode>, 'block' | 'style'> & {
     lines: HighlightLine[];
+    'aria-busy'?: boolean;
 };
 
 /**
@@ -23,7 +21,7 @@ export const CodeBlockRenderer = forwardRef(function CodeBlockRenderer(
     props: CodeBlockRendererProps,
     ref: React.ForwardedRef<HTMLDivElement>
 ) {
-    const { block, style, lines } = props;
+    const { block, style, lines, 'aria-busy': ariaBusy } = props;
 
     const id = useId();
     const withLineNumbers = Boolean(block.data.lineNumbers) && block.nodes.length > 1;
@@ -31,29 +29,33 @@ export const CodeBlockRenderer = forwardRef(function CodeBlockRenderer(
     const title = block.data.title;
 
     return (
-        <div ref={ref} className={tcls('group/codeblock grid grid-flow-col', style)}>
+        <div
+            ref={ref}
+            aria-busy={ariaBusy}
+            className={tcls('group/codeblock grid shrink grid-flow-col overflow-hidden', style)}
+        >
             <div className="flex items-center justify-start gap-2 text-sm [grid-area:1/1]">
                 {title ? (
-                    <div className="inline-flex items-center justify-center rounded-t straight-corners:rounded-t-s bg-tint px-3 py-2 text-tint text-xs leading-none tracking-wide">
+                    <div className="relative top-px z-20 inline-flex items-center justify-center rounded-t straight-corners:rounded-t-s border border-tint-subtle border-b-0 bg-tint-subtle theme-muted:bg-tint-base px-3 py-2 text-tint text-xs leading-none tracking-wide contrast-more:border-tint contrast-more:bg-tint-base [html.theme-bold.sidebar-filled_&]:bg-tint-base">
                         {title}
                     </div>
                 ) : null}
             </div>
             <CopyCodeButton
                 codeId={id}
-                style="z-[2] mt-2 mr-2 self-start justify-self-end rounded-md bg-transparent p-1 text-tint text-xs leading-none opacity-0 ring-1 ring-tint backdrop-blur-md transition-opacity duration-75 [grid-area:2/1] hover:ring-tint-hover group-hover/codeblock:opacity-[1]"
+                style="z-2 mt-2 mr-2 self-start justify-self-end leading-none opacity-0 backdrop-blur-md [grid-area:2/1] group-hover/codeblock:opacity-11"
             />
             <pre
                 className={tcls(
-                    'hide-scroll relative overflow-auto bg-tint theme-gradient:bg-tint-12/1 ring-tint-subtle [grid-area:2/1]',
-                    'rounded-md straight-corners:rounded-sm',
+                    'relative overflow-auto border border-tint-subtle bg-tint-subtle theme-muted:bg-tint-base p-2 [grid-area:2/1] contrast-more:border-tint contrast-more:bg-tint-base [html.theme-bold.sidebar-filled_&]:bg-tint-base',
+                    'rounded-md straight-corners:rounded-xs shadow-xs',
                     title && 'rounded-ss-none'
                 )}
             >
                 <code
                     id={id}
                     className={tcls(
-                        'inline-grid min-w-full grid-cols-[auto_1fr] p-2 [count-reset:line]',
+                        'inline-grid min-w-full grid-cols-[auto_1fr] [count-reset:line] print:whitespace-pre-wrap',
                         withWrap && 'whitespace-pre-wrap'
                     )}
                 >

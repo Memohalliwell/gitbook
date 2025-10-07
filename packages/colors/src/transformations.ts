@@ -8,7 +8,7 @@ type RGBColor = [number, number, number];
 type OKLABColor = { L: number; A: number; B: number };
 type OKLCHColor = { L: number; C: number; H: number };
 
-const D65 = [95.047, 100.0, 108.883]; // Reference white (D65)
+const D65 = [95.047, 100.0, 108.883] as const; // Reference white (D65)
 
 export enum ColorCategory {
     backgrounds = 'backgrounds',
@@ -19,7 +19,7 @@ export enum ColorCategory {
 }
 
 type ColorSubScale = {
-    [key: string]: number;
+    [key: string]: number | string;
 };
 
 /**
@@ -56,6 +56,8 @@ export const scale: Record<ColorCategory, ColorSubScale> = {
         solid: 9,
         /** Hovered solid backgrounds */
         'solid-hover': 10,
+        /** Original color */
+        original: 'original',
     },
     [ColorCategory.text]: {
         /** Very low-contrast text
@@ -211,16 +213,34 @@ export function colorScale(
     const result = [];
 
     for (let index = 0; index < mapping.length; index++) {
-        const targetL =
-            foregroundColor.L * mapping[index] + backgroundColor.L * (1 - mapping[index]);
+        const step = mapping[index]!;
+        const targetL = foregroundColor.L * step + backgroundColor.L * (1 - step);
 
-        if (index === 8 && !mix && Math.abs(baseColor.L - targetL) < 0.2) {
+        if (
+            index === 8 &&
+            !mix &&
+            (darkMode ? targetL - baseColor.L < 0.2 : baseColor.L - targetL < 0.2)
+        ) {
             // Original colour is close enough to target, so let's use the original colour as step 9.
             result.push(hex);
             continue;
         }
 
-        const chromaRatio = index < 8 ? (index + 1) * 0.05 : 1;
+        const chromaRatio = (() => {
+            switch (index) {
+                // Step 9 and 10 have max chroma, meaning they are fully saturated.
+                case 8:
+                case 9:
+                    return 1;
+                // Step 11 and 12 have a reduced chroma
+                case 10:
+                    return 0.4;
+                case 11:
+                    return 0.1;
+                default:
+                    return index * 0.05;
+            }
+        })();
 
         const shade = {
             L: targetL, // Blend lightness
@@ -277,7 +297,7 @@ export function rgbArrayToHex(rgb: RGBColor): string {
 
 export function getColor(percentage: number, start: RGBColor, end: RGBColor) {
     const rgb = end.map((channel, index) => {
-        return Math.round(channel + percentage * (start[index] - channel));
+        return Math.round(channel + percentage * (start[index]! - channel));
     });
 
     return rgbArrayToHex(rgb as RGBColor);
@@ -374,14 +394,14 @@ export function xyzToLab65(xyz: [number, number, number]): {
     B: number;
 } {
     const [x, y, z] = xyz.map((v, i) => {
-        const scaled = v / D65[i];
+        const scaled = v / D65[i]!;
         return scaled > 0.008856 ? Math.cbrt(scaled) : 7.787 * scaled + 16 / 116;
     });
 
     return {
-        L: 116 * y - 16,
-        A: 500 * (x - y),
-        B: 200 * (y - z),
+        L: 116 * y! - 16,
+        A: 500 * (x! - y!),
+        B: 200 * (y! - z!),
     };
 }
 
@@ -401,7 +421,10 @@ export function dpsContrast(a: RGBColor, b: RGBColor) {
     return contrast < 7.5 ? 0 : contrast;
 }
 
-export function colorContrast(background: string, foreground: string[] = [LIGHT_BASE, DARK_BASE]) {
+export function colorContrast(
+    background: string,
+    foreground: string[] = [LIGHT_BASE, DARK_BASE]
+): string {
     const bg = hexToRgbArray(background);
 
     const best: { color?: RGBColor; contrast: number } = {
@@ -418,5 +441,5 @@ export function colorContrast(background: string, foreground: string[] = [LIGHT_
         }
     }
 
-    return best.color ? rgbArrayToHex(best.color) : foreground[0];
+    return best.color ? rgbArrayToHex(best.color) : foreground[0] || LIGHT_BASE;
 }

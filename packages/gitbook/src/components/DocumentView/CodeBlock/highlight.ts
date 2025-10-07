@@ -12,6 +12,7 @@ import {
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 import { type BundledLanguage, bundledLanguages } from 'shiki/langs';
 
+import { nullIfNever } from '@/lib/typescript';
 import { plainHighlight } from './plain-highlight';
 
 export type HighlightLine = {
@@ -33,6 +34,8 @@ export type RenderedInline = {
     body: React.ReactNode;
 };
 
+const isSafari =
+    typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 const theme = createCssVariablesTheme();
 
 const { getSingletonHighlighter } = createSingletonShorthands(
@@ -61,25 +64,40 @@ export async function preloadHighlight(block: DocumentBlockCode) {
  */
 export async function highlight(
     block: DocumentBlockCode,
-    inlines: RenderedInline[]
+    inlines: RenderedInline[],
+    options?: {
+        evaluateInlineExpression?: (expr: string) => string;
+    }
 ): Promise<HighlightLine[]> {
     const langName = getBlockLang(block);
-    if (!langName) {
-        // Language not found, fallback to plain highlighting
-        return plainHighlight(block, inlines);
+
+    if (!langName || (isSafari && ['powershell', 'cpp'].includes(langName))) {
+        // Fallback to plain highlighting if
+        // - language is not found
+        // - TEMP : language is PowerShell or C++ and browser is Safari:
+        //   RegExp#[Symbol.search] throws TypeError when `lastIndex` isn’t writable
+        //   Fixed in upcoming Safari 18.6, remove when it'll be released - RND-7772
+        return plainHighlight(block, inlines, options);
     }
 
-    const code = getPlainCodeBlock(block);
+    const code = getPlainCodeBlock(block, undefined, options);
 
     const highlighter = await getSingletonHighlighter({
         langs: [langName],
         themes: [theme],
     });
 
+    let tokenizeMaxLineLength = 400;
+    // In some cases, people will use unindented code blocks with a single line.
+    // In this case, we can safely increase the max line length to avoid not highlighting the code.
+    if (block.nodes.length === 1) {
+        tokenizeMaxLineLength = 5000;
+    }
+
     const lines = highlighter.codeToTokensBase(code, {
         lang: langName,
         theme,
-        tokenizeMaxLineLength: 400,
+        tokenizeMaxLineLength,
     });
 
     let currentIndex = 0;
@@ -104,7 +122,7 @@ export async function highlight(
         currentIndex += 1; // for the \n
 
         return {
-            highlighted: Boolean(lineBlock.data.highlighted),
+            highlighted: Boolean(lineBlock?.data.highlighted),
             tokens: result,
         };
     });
@@ -121,6 +139,9 @@ const syntaxAliases: Record<string, BundledLanguage> = {
     // "Parser" language does not exist in Shiki, but it's used in GitBook
     // The closest language is "Blade"
     parser: 'blade',
+
+    // From GitBook App we receive "objectivec" instead of "objective-c"
+    objectivec: 'objective-c',
 };
 
 function checkIsBundledLanguage(lang: string): lang is BundledLanguage {
@@ -237,11 +258,17 @@ function matchTokenAndInlines(
     return result;
 }
 
-function getPlainCodeBlock(code: DocumentBlockCode, inlines?: InlineIndexed[]): string {
+function getPlainCodeBlock(
+    code: DocumentBlockCode,
+    inlines?: InlineIndexed[],
+    options?: {
+        evaluateInlineExpression?: (expr: string) => string;
+    }
+): string {
     let content = '';
 
     code.nodes.forEach((node, index) => {
-        const lineContent = getPlainCodeBlockLine(node, content.length, inlines);
+        const lineContent = getPlainCodeBlockLine(node, content.length, inlines, options);
         content += lineContent;
 
         if (index < code.nodes.length - 1) {
@@ -255,7 +282,10 @@ function getPlainCodeBlock(code: DocumentBlockCode, inlines?: InlineIndexed[]): 
 function getPlainCodeBlockLine(
     parent: DocumentBlockCodeLine | DocumentInlineAnnotation,
     index: number,
-    inlines?: InlineIndexed[]
+    inlines?: InlineIndexed[],
+    options?: {
+        evaluateInlineExpression?: (expr: string) => string;
+    }
 ): string {
     let content = '';
 
@@ -263,16 +293,46 @@ function getPlainCodeBlockLine(
         if (node.object === 'text') {
             content += cleanupLine(node.leaves.map((leaf) => leaf.text).join(''));
         } else {
-            const start = index + content.length;
-            content += getPlainCodeBlockLine(node, index + content.length, inlines);
-            const end = index + content.length;
+            switch (node.type) {
+                case 'annotation': {
+                    const start = index + content.length;
+                    content += getPlainCodeBlockLine(
+                        node,
+                        index + content.length,
+                        inlines,
+                        options
+                    );
+                    const end = index + content.length;
 
-            if (inlines) {
-                inlines.push({
-                    inline: node,
-                    start,
-                    end,
-                });
+                    if (inlines) {
+                        inlines.push({
+                            inline: node,
+                            start,
+                            end,
+                        });
+                    }
+                    break;
+                }
+                case 'expression': {
+                    const start = index + content.length;
+                    const exprValue =
+                        options?.evaluateInlineExpression?.(node.data.expression) ?? '';
+                    content += exprValue;
+                    const end = start + exprValue.length;
+
+                    if (inlines) {
+                        inlines.push({
+                            inline: node,
+                            start,
+                            end,
+                        });
+                    }
+                    break;
+                }
+                default: {
+                    nullIfNever(node);
+                    break;
+                }
             }
         }
     }

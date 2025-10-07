@@ -14,9 +14,11 @@ export function defaultCustomization(): api.SiteCustomizationSettings {
             successColor: { light: '#00C950', dark: '#00C950' },
             corners: api.CustomizationCorners.Rounded,
             font: api.CustomizationDefaultFont.Inter,
+            monospaceFont: api.CustomizationDefaultMonospaceFont.IBMPlexMono,
             background: api.CustomizationBackground.Plain,
             icons: api.CustomizationIconsStyle.Regular,
             links: api.CustomizationLinksStyle.Default,
+            depth: api.CustomizationDepth.Subtle,
             sidebar: {
                 background: api.CustomizationSidebarBackgroundStyle.Default,
                 list: api.CustomizationSidebarListStyle.Default,
@@ -25,6 +27,9 @@ export function defaultCustomization(): api.SiteCustomizationSettings {
         },
         internationalization: {
             locale: api.CustomizationLocale.En,
+        },
+        insights: {
+            trackingCookie: true,
         },
         favicon: {},
         header: {
@@ -44,8 +49,11 @@ export function defaultCustomization(): api.SiteCustomizationSettings {
         feedback: {
             enabled: false,
         },
-        aiSearch: {
-            enabled: true,
+        ai: {
+            mode: api.CustomizationAIMode.None,
+        },
+        externalLinks: {
+            target: api.SiteExternalLinksTarget.Self,
         },
         advancedCustomization: {
             enabled: true,
@@ -56,6 +64,11 @@ export function defaultCustomization(): api.SiteCustomizationSettings {
         pagination: {
             enabled: true,
         },
+        pageActions: {
+            externalAI: true,
+            markdown: true,
+            mcp: true,
+        },
         trademark: {
             enabled: true,
         },
@@ -64,4 +77,35 @@ export function defaultCustomization(): api.SiteCustomizationSettings {
         },
         socialPreview: {},
     };
+}
+
+/**
+ * Recursively flatten all sections from nested groups
+ */
+export function flattenSectionsFromGroup<T extends { id: string; object: string; children?: T[] }>(
+    children: T[]
+): T[] {
+    const sections: T[] = [];
+
+    for (const child of children) {
+        if (child.object === 'site-section') {
+            sections.push(child);
+        } else if (child.object === 'site-section-group' && child.children) {
+            sections.push(...flattenSectionsFromGroup(child.children));
+        }
+    }
+
+    return sections;
+}
+
+/**
+ * Recursively find a section by ID within a group and its nested children
+ */
+export function findSectionInGroup<T extends { id: string; object: string; children?: T[] }>(
+    group: { children: T[] },
+    sectionId: string
+): T | null {
+    return (
+        flattenSectionsFromGroup(group.children).find((section) => section.id === sectionId) ?? null
+    );
 }

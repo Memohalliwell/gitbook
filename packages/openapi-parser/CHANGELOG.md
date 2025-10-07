@@ -1,5 +1,70 @@
 # @gitbook/openapi-parser
 
+## 3.0.2
+
+### Patch Changes
+
+- 12c9d76: Adapt OpenAPI blocks to eval adaptive exprs & prefill TryIt config
+- 7fefe49: Catch OpenAPI validation errors
+- 360aa1c: Upgrade Scalar dependencies
+
+## 3.0.1
+
+### Patch Changes
+
+- 42c17f5: Improve OpenAPI parsing errors
+
+## 3.0.0
+
+### Major Changes
+
+- f1a6dec: Less strict OpenAPI parser, now returns { errors, filesystem }
+
+## 2.2.2
+
+### Patch Changes
+
+- b5ad0ce: Fix OpenAPI v2 parsing
+
+## 2.2.1
+
+### Patch Changes
+
+- 1738677: Stricter validation
+
+## 2.2.0
+
+### Minor Changes
+
+- bd553bc: Expose `isJson` and `isYaml` in OpenAPI parser
+
+## 2.1.5
+
+### Patch Changes
+
+- 1e013cd: Optional label in OpenAPI x-codeSamples
+- 4f5cbfe: Upgrade Scalar parser
+
+## 2.1.4
+
+### Patch Changes
+
+- d00dc8c: Pass scalar's errors through OpenAPIParseError
+
+## 2.1.3
+
+### Patch Changes
+
+- 2b6c593: Remove stable from x-stability
+
+## 2.1.2
+
+### Patch Changes
+
+- 7bb37c7: Move filterSelectedOpenAPISchemas to @gitbook/openapi-parser
+- 5b1e01c: Support for x-stability property
+- 813b2af: Support for x-enumDescriptions and x-gitbook-enum
+
 ## 2.1.1
 
 ### Patch Changes

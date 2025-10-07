@@ -1,10 +1,17 @@
-import type { CustomizationFontDefinition } from '@gitbook/api';
+import type { CustomizationFontDefinitionInput } from '@gitbook/api';
 
 /**
- * Define the custom font faces and set the --font-custom to the custom font name
+ * Define the custom font faces and set the --font-content or --font-mono variable
+ * to the custom font name.
  */
-export function generateFontFacesCSS(customFont: CustomizationFontDefinition): string {
+export function generateFontFacesCSS(
+    customFont: CustomizationFontDefinitionInput,
+    type: 'content' | 'mono'
+): string {
     const { fontFaces } = customFont;
+    const fontFamilyName = `CustomFont_${type}`;
+    const fontVariableName = `--font-${type}`;
+    const fallbackFont = type === 'content' ? 'sans-serif' : 'monospace';
 
     // Generate font face declarations for all weights
     const fontFaceDeclarations = fontFaces
@@ -24,7 +31,7 @@ export function generateFontFacesCSS(customFont: CustomizationFontDefinition): s
             // We could use the customFont.fontFamily name here, but to avoid extra normalization we're using 'CustomFont'
             return `
         @font-face {
-            font-family: CustomFont; 
+            font-family: ${fontFamilyName};
             font-style: normal;
             font-weight: ${face.weight};
             font-display: swap;
@@ -37,7 +44,7 @@ export function generateFontFacesCSS(customFont: CustomizationFontDefinition): s
     return fontFaceDeclarations
         ? `${fontFaceDeclarations}
         :root {
-            --font-custom: CustomFont;
+            ${fontVariableName}: ${fontFamilyName}, ${fallbackFont};
         }`
         : '';
 }
@@ -45,7 +52,7 @@ export function generateFontFacesCSS(customFont: CustomizationFontDefinition): s
 /**
  * Get a list of font sources to preload (only 400 and 700 weights)
  */
-export function getFontSourcesToPreload(customFont: CustomizationFontDefinition) {
+export function getFontSourcesToPreload(customFont: CustomizationFontDefinitionInput) {
     return customFont.fontFaces.filter(
         (face): face is typeof face & { weight: 400 | 700 } =>
             face.weight === 400 || face.weight === 700

@@ -1,5 +1,39 @@
 # @gitbook/react-contentkit
 
+## 0.7.5
+
+### Patch Changes
+
+- Updated dependencies [262afa3]
+  - @gitbook/icons@0.3.1
+
+## 0.7.4
+
+### Patch Changes
+
+- Updated dependencies [25e2b40]
+  - @gitbook/icons@0.3.0
+
+## 0.7.3
+
+### Patch Changes
+
+- Updated dependencies [2cdba53]
+  - @gitbook/icons@0.2.2
+
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [6816f0f]
+  - @gitbook/icons@0.2.1
+
+## 0.7.1
+
+### Patch Changes
+
+- 11a6511: Add basic error handling when transitioning between states.
+
 ## 0.7.0
 
 ### Minor Changes

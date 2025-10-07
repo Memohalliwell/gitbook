@@ -1,8 +1,7 @@
 import type { DocumentBlockReusableContent } from '@gitbook/api';
 
+import { getDataOrNull } from '@/lib/data';
 import { resolveContentRef } from '@/lib/references';
-
-import { getDataOrNull } from '@v2/lib/data';
 import type { BlockProps } from './Block';
 import { UnwrappedBlocks } from './Blocks';
 
@@ -13,15 +12,29 @@ export async function ReusableContent(props: BlockProps<DocumentBlockReusableCon
         throw new Error('Expected a content context to render a reusable content block');
     }
 
-    const resolved = await resolveContentRef(block.data.ref, context.contentContext);
-    if (!resolved?.reusableContent?.document) {
+    const dataFetcher = block.meta?.token
+        ? context.contentContext.dataFetcher.withToken({ apiToken: block.meta.token })
+        : context.contentContext.dataFetcher;
+
+    const resolved = await resolveContentRef(block.data.ref, {
+        ...context.contentContext,
+        dataFetcher,
+    });
+
+    if (!resolved) {
+        return null;
+    }
+
+    const { reusableContent } = resolved;
+    if (!reusableContent) {
         return null;
     }
 
     const document = await getDataOrNull(
-        context.contentContext.dataFetcher.getDocument({
-            spaceId: context.contentContext.space.id,
-            documentId: resolved.reusableContent.document,
+        dataFetcher.getRevisionReusableContentDocument({
+            spaceId: reusableContent.context.space.id,
+            revisionId: reusableContent.context.revisionId,
+            reusableContentId: reusableContent.revisionReusableContent.id,
         })
     );
 
@@ -34,7 +47,10 @@ export async function ReusableContent(props: BlockProps<DocumentBlockReusableCon
             nodes={document.nodes}
             document={document}
             ancestorBlocks={[...ancestorBlocks, block]}
-            context={context}
+            context={{
+                ...context,
+                contentContext: reusableContent.context,
+            }}
         />
     );
 }

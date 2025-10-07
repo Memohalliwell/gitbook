@@ -21,19 +21,19 @@ export function getBlockTextStyle(block: DocumentBlock): {
             return {
                 textSize: 'text-3xl font-semibold',
                 lineHeight: 'leading-tight',
-                marginTop: 'mt-[1em]',
+                marginTop: 'column-first-of-type:pt-0 pt-[1em]',
             };
         case 'heading-2':
             return {
                 textSize: 'text-2xl font-semibold',
                 lineHeight: 'leading-snug',
-                marginTop: 'mt-[0.75em]',
+                marginTop: 'column-first-of-type:pt-0 pt-[0.75em]',
             };
         case 'heading-3':
             return {
                 textSize: 'text-xl font-semibold',
                 lineHeight: 'leading-snug',
-                marginTop: 'mt-[0.5em]',
+                marginTop: 'column-first-of-type:pt-0 pt-[0.5em]',
             };
         case 'divider':
             return {
@@ -43,9 +43,9 @@ export function getBlockTextStyle(block: DocumentBlock): {
         case 'list-ordered':
         case 'list-tasks':
         case 'list-unordered':
-            return getBlockTextStyle(block.nodes[0]);
+            return getBlockTextStyle(block.nodes[0]!);
         case 'list-item':
-            return getBlockTextStyle(block.nodes[0]);
+            return getBlockTextStyle(block.nodes[0]!);
         default:
             return {
                 textSize: 'text-base',

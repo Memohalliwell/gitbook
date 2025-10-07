@@ -5,7 +5,7 @@ import React from 'react';
 
 import { useScrollActiveId } from '@/components/hooks';
 import { Button } from '@/components/primitives';
-import { t, useLanguage } from '@/intl/client';
+import { t, tString, useLanguage } from '@/intl/client';
 import { tcls } from '@/lib/tailwind';
 import { type PDFSearchParams, getPDFURLSearchParams } from './urls';
 
@@ -32,6 +32,7 @@ export function PageControlButtons(props: {
     }, [pageIds]);
     const activeDivId = useScrollActiveId(divIds, {
         threshold: 0,
+        enabled: true,
     });
     const activeIndex = (activeDivId ? divIds.indexOf(activeDivId) : 0) + 1;
     const activePageId = pageIds[activeIndex - 1]?.[0];
@@ -58,9 +59,8 @@ export function PageControlButtons(props: {
                             only: true,
                         }).toString()}`}
                         variant="secondary"
-                    >
-                        {t(language, 'pdf_mode_only_page')}
-                    </Button>
+                        label={tString(language, 'pdf_mode_only_page')}
+                    />
                 )}
                 <Button
                     href={`?${getPDFURLSearchParams({
@@ -69,9 +69,8 @@ export function PageControlButtons(props: {
                         only: false,
                     }).toString()}`}
                     variant="secondary"
-                >
-                    {t(language, 'pdf_mode_all')}
-                </Button>
+                    label={tString(language, 'pdf_mode_all')}
+                />
 
                 {trademark ? <div className={tcls('mt-5')}>{trademark}</div> : null}
             </div>
@@ -100,7 +99,7 @@ export function PageControlButtons(props: {
                             'bg-yellow-100',
                             'border-yellow-400',
                             'text-yellow-800',
-                            'shadow-sm',
+                            'shadow-xs',
                             'border',
                             'rounded-md',
                             'p-4',
@@ -141,7 +140,7 @@ export function PageControlButtons(props: {
                         'py-2',
                         'bg-slate-100',
                         'rounded-full',
-                        'shadow-sm',
+                        'shadow-xs',
                         'border-slate-300',
                         'border'
                     )}

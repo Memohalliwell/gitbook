@@ -1,9 +1,9 @@
+import type { GitBookAnyContext } from '@/lib/context';
 import {
     type CustomizationContentLink,
     type CustomizationFooterGroup,
     SiteInsightsLinkPosition,
 } from '@gitbook/api';
-import type { GitBookAnyContext } from '@v2/lib/context';
 
 import { resolveContentRef } from '@/lib/references';
 import { tcls } from '@/lib/tailwind';
@@ -36,13 +36,9 @@ async function FooterLink(props: { link: CustomizationContentLink; context: GitB
     const { link, context } = props;
     const resolved = await resolveContentRef(link.to, context);
 
-    if (!resolved) {
-        return null;
-    }
-
     return (
         <Link
-            href={resolved.href}
+            href={resolved?.href ?? '#'}
             className={tcls(
                 'font-normal',
                 'text-tint',

@@ -19,9 +19,9 @@ export function ListItem(props: BlockProps<DocumentBlockListItem>) {
 
     const parent = ancestorBlocks[ancestorBlocks.length - 1];
     assert(
-        (parent && parent.type === 'list-ordered') ||
-            parent.type === 'list-unordered' ||
-            parent.type === 'list-tasks',
+        parent?.type === 'list-ordered' ||
+            parent?.type === 'list-unordered' ||
+            parent?.type === 'list-tasks',
         'Invalid parent list type'
     );
 
@@ -31,13 +31,13 @@ export function ListItem(props: BlockProps<DocumentBlockListItem>) {
             nodes={block.nodes}
             ancestorBlocks={[...ancestorBlocks, block]}
             blockStyle={tcls(
-                'min-h-[1lh]',
+                'min-h-lh',
                 // flip heading hash icon if list item is a heading
                 'flip-heading-hash',
                 // remove margin-top for the first heading in a list
-                '[&:is(h2)>div]:mt-0',
-                '[&:is(h3)>div]:mt-0',
-                '[&:is(h4)>div]:mt-0',
+                '[h2]:pt-0',
+                '[h3]:pt-0',
+                '[h4]:pt-0',
                 // Override the "mx-auto" class from UnwrappedBlocks
                 'mx-0'
             )}
@@ -112,11 +112,11 @@ function getListItemDepth(input: {
 
     for (let i = ancestorBlocks.length - 1; i >= 0; i--) {
         const block = ancestorBlocks[i];
-        if (block.type === type) {
+        if (block?.type === type) {
             depth = depth + 1;
             continue;
         }
-        if (block.type === 'list-item') {
+        if (block?.type === 'list-item') {
             continue;
         }
         break;
@@ -137,7 +137,7 @@ function ListItemPrefix(props: { block: DocumentBlockListItem; children: React.R
             className={tcls(
                 textStyle.textSize,
                 textStyle.lineHeight,
-                'mr-1 flex min-h-[1lh] min-w-6 items-center justify-center text-tint'
+                'mr-1 flex min-h-lh min-w-6 items-center justify-center text-tint'
             )}
         >
             {props.children}
@@ -165,7 +165,7 @@ function PseudoBefore(props: {
 }) {
     return (
         <div
-            className="before:font-var before:content-[--pseudoBefore--content]"
+            className="before:font-var before:content-(--pseudoBefore--content)"
             style={
                 {
                     '--pseudoBefore--content': `'${props.content}'`,

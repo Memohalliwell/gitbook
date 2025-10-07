@@ -1,5 +1,7 @@
-import type { AnyApiDefinitionFormat, LoadPlugin } from '@scalar/openapi-parser';
+import type { Plugin } from '@scalar/json-magic/bundle';
+import type { AnyObject, ErrorObject } from '@scalar/openapi-parser';
 import { OpenAPIParseError } from './error';
+import type { Filesystem, OpenAPIV3xDocument } from './types';
 import { convertOpenAPIV2ToOpenAPIV3 } from './v2';
 import { parseOpenAPIV3 } from './v3';
 
@@ -7,21 +9,29 @@ export interface ParseOpenAPIInput {
     /**
      * The API definition to parse.
      */
-    value: AnyApiDefinitionFormat;
+    value: string | AnyObject;
     /**
      * The root URL of the specified OpenAPI document.
      */
     rootURL: string | null;
     /**
-     * Trust the input. This will skip advanced validation.
-     */
-    trust?: boolean;
-    /**
      * Options for the parser.
      */
     options?: {
-        plugins?: LoadPlugin[];
+        plugins?: Plugin[];
     };
+}
+
+export interface ParseOpenAPIResult {
+    /**
+     * Informational errors that were found while parsing the OpenAPI document.
+     */
+    errors: ErrorObject[];
+
+    /**
+     * The parsed OpenAPI document.
+     */
+    filesystem: Filesystem<OpenAPIV3xDocument>;
 }
 
 /**

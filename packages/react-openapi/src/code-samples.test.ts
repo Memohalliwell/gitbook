@@ -50,6 +50,8 @@ it('should parse host and path on url strings properly', () => {
     ]);
 });
 
+const exampleEndpointUrl = new URL('https://example.com/path');
+
 describe('curL code sample generator', () => {
     const generator = codeSampleGenerators.find((g) => g.id === 'curl');
 
@@ -58,7 +60,7 @@ describe('curL code sample generator', () => {
     it('should format application/x-www-form-urlencoded body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
@@ -77,7 +79,7 @@ describe('curL code sample generator', () => {
     it('should format application/json body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/json',
             },
@@ -96,7 +98,7 @@ describe('curL code sample generator', () => {
     it('should format application/xml body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/xml',
             },
@@ -113,7 +115,7 @@ describe('curL code sample generator', () => {
     it('should convert json to xml body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/xml',
             },
@@ -130,7 +132,7 @@ describe('curL code sample generator', () => {
     it('should format application/graphql body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/graphql',
             },
@@ -147,7 +149,7 @@ describe('curL code sample generator', () => {
     it('should format text/csv body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'text/csv',
             },
@@ -164,7 +166,7 @@ describe('curL code sample generator', () => {
     it('should format application/pdf body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/pdf',
             },
@@ -181,7 +183,7 @@ describe('curL code sample generator', () => {
     it('should format text/plain body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'text/plain',
             },
@@ -198,7 +200,7 @@ describe('curL code sample generator', () => {
     it('should format multipart/form-data body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
@@ -223,7 +225,7 @@ describe('javascript code sample generator', () => {
     it('should format application/x-www-form-urlencoded body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
@@ -242,7 +244,7 @@ describe('javascript code sample generator', () => {
     it('should format application/json body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/json',
             },
@@ -261,7 +263,7 @@ describe('javascript code sample generator', () => {
     it('should format application/xml body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/xml',
             },
@@ -278,7 +280,7 @@ describe('javascript code sample generator', () => {
     it('should convert json to xml body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/xml',
             },
@@ -295,7 +297,7 @@ describe('javascript code sample generator', () => {
     it('should format application/graphql body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/graphql',
             },
@@ -312,7 +314,7 @@ describe('javascript code sample generator', () => {
     it('should format text/csv body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'text/csv',
             },
@@ -329,7 +331,7 @@ describe('javascript code sample generator', () => {
     it('should format application/pdf body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/pdf',
             },
@@ -346,7 +348,7 @@ describe('javascript code sample generator', () => {
     it('should format text/plain body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'text/plain',
             },
@@ -363,7 +365,7 @@ describe('javascript code sample generator', () => {
     it('should format multipart/form-data body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
@@ -388,7 +390,7 @@ describe('python code sample generator', () => {
     it('should format application/x-www-form-urlencoded body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
@@ -400,33 +402,36 @@ describe('python code sample generator', () => {
         const output = generator?.generate(input);
 
         expect(output).toBe(
-            'import requests\n\nresponse = requests.get(\n    "https://example.com/path",\n    headers={"Content-Type":"application/x-www-form-urlencoded"},\n    data={"key":"value"}\n)\n\ndata = response.json()'
+            'import requests\n\nresponse = requests.get(\n    "https://example.com/path",\n    headers={"Content-Type":"application/x-www-form-urlencoded"},\n    data={\n      "key": "value"\n    }\n)\n\ndata = response.json()'
         );
     });
 
     it('should format application/json body properly', () => {
         const input: CodeSampleInput = {
-            method: 'GET',
-            url: 'https://example.com/path',
+            method: 'POST',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/json',
             },
             body: {
                 key: 'value',
+                truethy: true,
+                falsey: false,
+                nullish: null,
             },
         };
 
         const output = generator?.generate(input);
 
         expect(output).toBe(
-            'import requests\n\nresponse = requests.get(\n    "https://example.com/path",\n    headers={"Content-Type":"application/json"},\n    data={"key":"value"}\n)\n\ndata = response.json()'
+            'import json\nimport requests\n\nresponse = requests.post(\n    "https://example.com/path",\n    headers={"Content-Type":"application/json"},\n    data=json.dumps({\n      "key": "value",\n      "truethy": True,\n      "falsey": False,\n      "nullish": None\n    })\n)\n\ndata = response.json()'
         );
     });
 
     it('should format application/xml body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/xml',
             },
@@ -443,7 +448,7 @@ describe('python code sample generator', () => {
     it('should convert json to xml body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/xml',
             },
@@ -460,7 +465,7 @@ describe('python code sample generator', () => {
     it('should format application/graphql body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/graphql',
             },
@@ -477,7 +482,7 @@ describe('python code sample generator', () => {
     it('should format text/csv body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'text/csv',
             },
@@ -494,7 +499,7 @@ describe('python code sample generator', () => {
     it('should format application/pdf body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/pdf',
             },
@@ -511,7 +516,7 @@ describe('python code sample generator', () => {
     it('should format text/plain body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'text/plain',
             },
@@ -528,7 +533,7 @@ describe('python code sample generator', () => {
     it('should format multipart/form-data body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
@@ -553,7 +558,7 @@ describe('http code sample generator', () => {
     it('should format application/x-www-form-urlencoded body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
@@ -572,7 +577,7 @@ describe('http code sample generator', () => {
     it('should format application/json body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/json',
             },
@@ -591,7 +596,7 @@ describe('http code sample generator', () => {
     it('should format application/xml body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/xml',
             },
@@ -608,7 +613,7 @@ describe('http code sample generator', () => {
     it('should convert json to xml body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/xml',
             },
@@ -625,7 +630,7 @@ describe('http code sample generator', () => {
     it('should format application/graphql body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/graphql',
             },
@@ -642,7 +647,7 @@ describe('http code sample generator', () => {
     it('should format text/csv body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'text/csv',
             },
@@ -659,7 +664,7 @@ describe('http code sample generator', () => {
     it('should format application/pdf body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'application/pdf',
             },
@@ -676,7 +681,7 @@ describe('http code sample generator', () => {
     it('should format text/plain body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'text/plain',
             },
@@ -693,7 +698,7 @@ describe('http code sample generator', () => {
     it('should format multipart/form-data body properly', () => {
         const input: CodeSampleInput = {
             method: 'GET',
-            url: 'https://example.com/path',
+            url: { origin: exampleEndpointUrl.origin, path: exampleEndpointUrl.pathname },
             headers: {
                 'Content-Type': 'multipart/form-data',
             },

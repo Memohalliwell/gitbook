@@ -3,15 +3,19 @@ import {
     OpenAPIMediaTypeExamplesBody,
     OpenAPIMediaTypeExamplesSelector,
 } from './OpenAPICodeSampleInteractive';
-import { OpenAPITabs, OpenAPITabsList, OpenAPITabsPanels } from './OpenAPITabs';
+import { OpenAPICodeSampleBody } from './OpenAPICodeSampleSelector';
 import { ScalarApiButton } from './ScalarApiButton';
-import { StaticSection } from './StaticSection';
-import { type CodeSampleGenerator, codeSampleGenerators } from './code-samples';
+import { type CodeSampleGenerator, codeSampleGenerators, parseHostAndPath } from './code-samples';
+import { type OpenAPIContext, getOpenAPIClientContext } from './context';
 import { generateMediaTypeExamples, generateSchemaExample } from './generateSchemaExample';
 import { stringifyOpenAPI } from './stringifyOpenAPI';
-import type { OpenAPIContextProps, OpenAPIOperationData } from './types';
+import type { OpenAPIOperationData } from './types';
 import { getDefaultServerURL } from './util/server';
-import { checkIsReference, createStateKey } from './utils';
+import {
+    resolvePrefillCodePlaceholderFromSecurityScheme,
+    resolveURLWithPrefillCodePlaceholdersFromServer,
+} from './util/tryit-prefill';
+import { checkIsReference, extractOperationSecurityInfo } from './utils';
 
 const CUSTOM_CODE_SAMPLES_KEYS = ['x-custom-examples', 'x-code-samples', 'x-codeSamples'] as const;
 
@@ -21,9 +25,9 @@ const CUSTOM_CODE_SAMPLES_KEYS = ['x-custom-examples', 'x-code-samples', 'x-code
  */
 export function OpenAPICodeSample(props: {
     data: OpenAPIOperationData;
-    context: OpenAPIContextProps;
+    context: OpenAPIContext;
 }) {
-    const { data } = props;
+    const { data, context } = props;
 
     // If code samples are disabled at operation level, we don't display the code samples.
     if (data.operation['x-codeSamples'] === false) {
@@ -45,11 +49,12 @@ export function OpenAPICodeSample(props: {
     }
 
     return (
-        <OpenAPITabs stateKey={createStateKey('codesample')} items={samples}>
-            <StaticSection header={<OpenAPITabsList />} className="openapi-codesample">
-                <OpenAPITabsPanels />
-            </StaticSection>
-        </OpenAPITabs>
+        <OpenAPICodeSampleBody
+            context={getOpenAPIClientContext(context)}
+            data={data}
+            items={samples}
+            selectIcon={context.icons.chevronDown}
+        />
     );
 }
 
@@ -58,14 +63,18 @@ export function OpenAPICodeSample(props: {
  */
 function generateCodeSamples(props: {
     data: OpenAPIOperationData;
-    context: OpenAPIContextProps;
+    context: OpenAPIContext;
 }) {
     const { data, context } = props;
 
     const searchParams = new URLSearchParams();
     const headersObject: { [k: string]: string } = {};
 
-    data.operation.parameters?.forEach((param) => {
+    // The parser can sometimes returns invalid parameters (an object instead of an array).
+    // It should get fixed in scalar, but in the meantime we just ignore the parameters in that case.
+    const params = Array.isArray(data.operation.parameters) ? data.operation.parameters : [];
+
+    params.forEach((param) => {
         if (!param) {
             return;
         }
@@ -95,13 +104,21 @@ function generateCodeSamples(props: {
         ? data.operation.requestBody
         : undefined;
 
-    const url =
-        getDefaultServerURL(data.servers) +
-        data.path +
-        (searchParams.size ? `?${searchParams.toString()}` : '');
+    const defaultServerUrl = getDefaultServerURL(data.servers);
+    let serverUrlPath = defaultServerUrl ? parseHostAndPath(defaultServerUrl).path : '';
+    serverUrlPath = serverUrlPath === '/' ? '' : serverUrlPath;
+    const serverUrl = data.servers[0]
+        ? resolveURLWithPrefillCodePlaceholdersFromServer(data.servers[0], defaultServerUrl)
+        : defaultServerUrl;
+    const serverUrlOrigin = serverUrl.replaceAll(serverUrlPath, '');
+    const path =
+        serverUrlPath + data.path + (searchParams.size ? `?${searchParams.toString()}` : '');
 
     const genericHeaders = {
-        ...getSecurityHeaders(data.securities),
+        ...getSecurityHeaders({
+            securityRequirement: data.operation.security,
+            securities: data.securities,
+        }),
         ...headersObject,
     };
 
@@ -116,7 +133,7 @@ function generateCodeSamples(props: {
                     mediaType,
                     element: context.renderCodeBlock({
                         code: generator.generate({
-                            url,
+                            url: { origin: serverUrlOrigin, path },
                             method: data.method,
                             body: undefined,
                             headers: mediaTypeHeaders,
@@ -129,7 +146,7 @@ function generateCodeSamples(props: {
                         example,
                         element: context.renderCodeBlock({
                             code: generator.generate({
-                                url,
+                                url: { origin: serverUrlOrigin, path },
                                 method: data.method,
                                 body: example.value,
                                 headers: mediaTypeHeaders,
@@ -153,6 +170,7 @@ function generateCodeSamples(props: {
                         method={data.method}
                         path={data.path}
                         renderers={renderers}
+                        blockKey={context.blockKey}
                     />
                 ),
                 footer: (
@@ -165,7 +183,7 @@ function generateCodeSamples(props: {
             label: generator.label,
             body: context.renderCodeBlock({
                 code: generator.generate({
-                    url,
+                    url: { origin: serverUrlOrigin, path },
                     method: data.method,
                     body: undefined,
                     headers: genericHeaders,
@@ -189,10 +207,10 @@ export interface MediaTypeRenderer {
 function OpenAPICodeSampleFooter(props: {
     data: OpenAPIOperationData;
     renderers: MediaTypeRenderer[];
-    context: OpenAPIContextProps;
+    context: OpenAPIContext;
 }) {
     const { data, context, renderers } = props;
-    const { method, path } = data;
+    const { method, path, securities, servers } = data;
     const { specUrl } = context;
     const hideTryItPanel = data['x-hideTryItPanel'] || data.operation['x-hideTryItPanel'];
     const hasMultipleMediaTypes =
@@ -213,11 +231,22 @@ function OpenAPICodeSampleFooter(props: {
                     method={data.method}
                     path={data.path}
                     renderers={renderers}
+                    selectIcon={context.icons.chevronDown}
+                    blockKey={context.blockKey}
                 />
             ) : (
                 <span />
             )}
-            {!hideTryItPanel && <ScalarApiButton method={method} path={path} specUrl={specUrl} />}
+            {!hideTryItPanel && (
+                <ScalarApiButton
+                    context={getOpenAPIClientContext(context)}
+                    method={method}
+                    path={path}
+                    securities={securities}
+                    servers={servers}
+                    specUrl={specUrl}
+                />
+            )}
         </div>
     );
 }
@@ -227,7 +256,7 @@ function OpenAPICodeSampleFooter(props: {
  */
 function getCustomCodeSamples(props: {
     data: OpenAPIOperationData;
-    context: OpenAPIContextProps;
+    context: OpenAPIContext;
 }) {
     const { data, context } = props;
 
@@ -242,15 +271,11 @@ function getCustomCodeSamples(props: {
         if (customSamples && Array.isArray(customSamples)) {
             customCodeSamples = customSamples
                 .filter((sample) => {
-                    return (
-                        typeof sample.label === 'string' &&
-                        typeof sample.source === 'string' &&
-                        typeof sample.lang === 'string'
-                    );
+                    return typeof sample.source === 'string' && typeof sample.lang === 'string';
                 })
                 .map((sample, index) => ({
                     key: `custom-sample-${sample.lang}-${index}`,
-                    label: sample.label,
+                    label: sample.label || sample.lang,
                     body: context.renderCodeBlock({
                         code: sample.source,
                         syntax: sample.lang,
@@ -265,46 +290,73 @@ function getCustomCodeSamples(props: {
     return customCodeSamples;
 }
 
-function getSecurityHeaders(securities: OpenAPIOperationData['securities']): {
+function getSecurityHeaders(args: {
+    securityRequirement: OpenAPIV3.OperationObject['security'];
+    securities: OpenAPIOperationData['securities'];
+}): {
     [key: string]: string;
 } {
-    const security = securities[0];
+    const { securityRequirement, securities } = args;
+    const operationSecurityInfo = extractOperationSecurityInfo({ securityRequirement, securities });
 
-    if (!security) {
+    if (operationSecurityInfo.length === 0) {
         return {};
     }
 
-    switch (security[1].type) {
-        case 'http': {
-            let scheme = security[1].scheme;
-            let format = security[1].bearerFormat ?? 'YOUR_SECRET_TOKEN';
+    const selectedSecurity = operationSecurityInfo.at(0);
 
-            if (scheme?.includes('bearer')) {
-                scheme = 'Bearer';
-            } else if (scheme?.includes('basic')) {
-                scheme = 'Basic';
-                format = 'username:password';
-            } else if (scheme?.includes('token')) {
-                scheme = 'Token';
+    if (!selectedSecurity) {
+        return {};
+    }
+
+    const headers: { [key: string]: string } = {};
+
+    for (const security of selectedSecurity.schemes) {
+        switch (security.type) {
+            case 'http': {
+                let scheme = security.scheme;
+                const format = resolvePrefillCodePlaceholderFromSecurityScheme({
+                    security: security,
+                    defaultPlaceholderValue: scheme?.includes('basic')
+                        ? 'username:password'
+                        : 'YOUR_SECRET_TOKEN',
+                });
+
+                if (scheme?.includes('bearer')) {
+                    scheme = 'Bearer';
+                } else if (scheme?.includes('basic')) {
+                    scheme = 'Basic';
+                } else if (scheme?.includes('token')) {
+                    scheme = 'Token';
+                }
+
+                headers.Authorization = `${scheme} ${format}`;
+                break;
             }
-
-            return {
-                Authorization: `${scheme} ${format}`,
-            };
-        }
-        case 'apiKey': {
-            if (security[1].in !== 'header') return {};
-
-            const name = security[1].name ?? 'Authorization';
-
-            return {
-                [name]: 'YOUR_API_KEY',
-            };
-        }
-        default: {
-            return {};
+            case 'apiKey': {
+                if (security.in !== 'header') {
+                    break;
+                }
+                const name = security.name ?? 'Authorization';
+                headers[name] = resolvePrefillCodePlaceholderFromSecurityScheme({
+                    security: security,
+                    defaultPlaceholderValue: 'YOUR_API_KEY',
+                });
+                break;
+            }
+            case 'oauth2': {
+                headers.Authorization = `Bearer ${resolvePrefillCodePlaceholderFromSecurityScheme({
+                    security: security,
+                    defaultPlaceholderValue: 'YOUR_OAUTH2_TOKEN',
+                })}`;
+                break;
+            }
+            default: {
+                break;
+            }
         }
     }
+    return headers;
 }
 
 function validateHttpMethod(method: string): method is OpenAPIV3.HttpMethods {

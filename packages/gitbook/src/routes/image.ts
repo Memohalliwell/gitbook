@@ -2,12 +2,13 @@ import {
     CURRENT_SIGNATURE_VERSION,
     type CloudflareImageOptions,
     type SignatureVersion,
+    SizableImageAction,
     checkIsSizableImageURL,
     isSignatureVersion,
     parseImageAPIURL,
     resizeImage,
     verifyImageSignature,
-} from '@v2/lib/images';
+} from '@/lib/images';
 import { NextResponse } from 'next/server';
 
 /**
@@ -40,7 +41,7 @@ export async function serveResizedImage(
     // Check again if the image can be sized, even though we checked when rendering the Image component
     // Otherwise, it's possible to pass just any link to this endpoint and trigger HTML injection on the domain
     // Also prevent infinite redirects.
-    if (!checkIsSizableImageURL(url)) {
+    if (checkIsSizableImageURL(url) === SizableImageAction.Skip) {
         return new Response('Invalid url parameter', { status: 400 });
     }
 
@@ -86,6 +87,8 @@ export async function serveResizedImage(
         options.height = Number(height);
     }
 
+    const longestEdgeValue = Math.max(options.width || 0, options.height || 0);
+
     const dpr = requestURL.searchParams.get('dpr');
     if (dpr) {
         options.dpr = Number(dpr);
@@ -98,23 +101,41 @@ export async function serveResizedImage(
 
     // Check the Accept header to handle content negotiation
     const accept = request.headers.get('accept');
-    if (accept && /image\/avif/.test(accept)) {
+    // We use transform image, max size for avif should be 1600
+    // https://developers.cloudflare.com/images/transform-images/#limits-per-format
+    if (accept && /image\/avif/.test(accept) && longestEdgeValue <= 1600) {
         options.format = 'avif';
-    } else if (accept && /image\/webp/.test(accept)) {
+        options.dpr = chooseDPR(longestEdgeValue, 1600, options.dpr);
+    } else if (accept && /image\/webp/.test(accept) && longestEdgeValue <= 1920) {
         options.format = 'webp';
+        options.dpr = chooseDPR(longestEdgeValue, 1920, options.dpr);
     }
 
     try {
         const response = await resizeImage(url, options);
         if (!response.ok) {
-            throw new Error('Failed to resize image');
+            throw new Error(`Failed to resize image, received status code ${response.status}`);
         }
 
         return response;
-    } catch (_error) {
+    } catch (error) {
         // Redirect to the original image if resizing fails
+        console.warn('Error while resizing image, redirecting to original', error);
         return NextResponse.redirect(url, 302);
     }
+}
+
+/**
+ * Choose the appropriate device pixel ratio (DPR) based on the longest edge of the image.
+ * This function ensures that the DPR is within a reasonable range (1 to 3).
+ * This is only used for AVIF/WebP formats to avoid issues with Cloudflare resizing.
+ * It means that dpr may not be respected for avif/webp formats, but it will also improve the cache hit ratio.
+ */
+function chooseDPR(longestEdgeValue: number, maxAllowedSize: number, wantedDpr?: number): number {
+    const maxDprBySize = Math.floor(maxAllowedSize / longestEdgeValue);
+    const clampedDpr = Math.min(wantedDpr ?? 1, 3); // Limit to a maximum of 3, default to 1 if not specified
+    // Ensure that the DPR is within the allowed range
+    return Math.max(1, Math.min(maxDprBySize, clampedDpr));
 }
 
 /**

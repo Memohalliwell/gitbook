@@ -4,7 +4,7 @@ import {
     type DocumentBlockTable,
     SiteInsightsLinkPosition,
 } from '@gitbook/api';
-import { Icon } from '@gitbook/icons';
+import { Icon, IconStyle } from '@gitbook/icons';
 import assertNever from 'assert-never';
 
 import { Checkbox } from '@/components/primitives';
@@ -15,12 +15,23 @@ import { getSimplifiedContentType } from '@/lib/files';
 import { resolveContentRef } from '@/lib/references';
 import { tcls } from '@/lib/tailwind';
 import { filterOutNullable } from '@/lib/typescript';
-
 import type { BlockProps } from '../Block';
 import { Blocks } from '../Blocks';
 import { FileIcon } from '../FileIcon';
 import type { TableRecordKV } from './Table';
-import { type VerticalAlignment, getColumnAlignment } from './utils';
+import {
+    type VerticalAlignment,
+    getColumnAlignment,
+    isContentRef,
+    isDocumentTableImageRecord,
+    isStringArray,
+} from './utils';
+
+const alignmentMap: Record<'text-left' | 'text-center' | 'text-right', string> = {
+    'text-left': '**:text-left text-left',
+    'text-center': '**:text-center text-center',
+    'text-right': '**:text-right text-right',
+};
 
 /**
  * Render the value for a column in a record.
@@ -52,18 +63,28 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
         return null;
     }
 
+    // Because definition and value depends on column, we have to check typing in each case at runtime.
+    // Validation should have been done at the API level, but we can't know typing based on `definition.type`.
+    // OpenAPI types cannot really handle discriminated unions based on a dynamic key.
     switch (definition.type) {
-        case 'checkbox':
+        case 'checkbox': {
+            if (value === null || typeof value !== 'boolean') {
+                return null;
+            }
             return (
                 <Checkbox
                     className={tcls('w-5', 'h-5')}
-                    checked={value as boolean}
+                    checked={value}
                     disabled={true}
                     aria-labelledby={ariaLabelledBy}
                 />
             );
+        }
         case 'rating': {
-            const rating = value as number;
+            if (typeof value !== 'number') {
+                return null;
+            }
+            const rating = value;
             const max = definition.max;
 
             return (
@@ -92,6 +113,7 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
                                     <Icon
                                         key={i}
                                         icon="star"
+                                        iconStyle={IconStyle.SharpSolid}
                                         className={tcls('size-[15px]', 'text-primary')}
                                     />
                                 ))}
@@ -101,21 +123,28 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
                 </Tag>
             );
         }
-        case 'number':
+        case 'number': {
+            if (typeof value !== 'number') {
+                return null;
+            }
             return (
                 <Tag
                     className={tcls('text-base', 'tabular-nums', 'tracking-tighter')}
                     aria-labelledby={ariaLabelledBy}
                 >{`${value}`}</Tag>
             );
+        }
         case 'text': {
-            // @ts-ignore
+            if (typeof value !== 'string') {
+                return null;
+            }
             const fragment = getNodeFragmentByName(block, value);
             if (!fragment) {
                 return <Tag className={tcls(['w-full', verticalAlignment])}>{''}</Tag>;
             }
 
-            const alignment = getColumnAlignment(definition);
+            const horizontalAlignment = getColumnAlignment(definition);
+            const horizontalClasses = alignmentMap[horizontalAlignment];
 
             return (
                 <Blocks
@@ -130,8 +159,7 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
                         'lg:space-y-3',
                         'leading-normal',
                         verticalAlignment,
-                        alignment === 'right' ? 'text-right' : null,
-                        alignment === 'center' ? 'text-center' : null,
+                        horizontalClasses,
                     ]}
                     context={context}
                     blockStyle={['w-full', 'max-w-[unset]']}
@@ -142,8 +170,11 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
             );
         }
         case 'files': {
+            if (!isStringArray(value)) {
+                return null;
+            }
             const files = await Promise.all(
-                (value as string[]).map((fileId) =>
+                value.map((fileId) =>
                     context.contentContext
                         ? resolveContentRef(
                               {
@@ -167,8 +198,7 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
                             <StyledLink
                                 key={index}
                                 href={ref.href}
-                                target="_blank"
-                                style={['flex', 'flex-row', 'items-center', 'gap-2']}
+                                className="flex flex-row items-center gap-2"
                                 insights={
                                     ref.file
                                         ? {
@@ -186,7 +216,7 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
                             >
                                 {contentType === 'image' ? (
                                     <Image
-                                        style={['max-h-[1lh]', 'h-[1lh]']}
+                                        style={['max-h-lh', 'h-lh']}
                                         alt={ref.text}
                                         sizes={[{ width: 24 }]}
                                         resize={context.contentContext?.imageResizer}
@@ -215,10 +245,12 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
             );
         }
         case 'content-ref': {
-            const contentRef = value ? (value as ContentRef) : null;
+            if (value === null || !isContentRef(value)) {
+                return null;
+            }
             const resolved =
-                contentRef && context.contentContext
-                    ? await resolveContentRef(contentRef, context.contentContext, {
+                value && context.contentContext
+                    ? await resolveContentRef(value, context.contentContext, {
                           resolveAnchorText: true,
                           iconStyle: ['mr-2', 'text-tint-subtle'],
                       })
@@ -233,11 +265,11 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
                         <StyledLink
                             href={resolved.href}
                             insights={
-                                contentRef
+                                value
                                     ? {
                                           type: 'link_click',
                                           link: {
-                                              target: contentRef,
+                                              target: value,
                                               position: SiteInsightsLinkPosition.Content,
                                           },
                                       }
@@ -251,8 +283,11 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
             );
         }
         case 'users': {
+            if (!isStringArray(value)) {
+                return null;
+            }
             const resolved = await Promise.all(
-                (value as string[]).map(async (userId) => {
+                value.map(async (userId) => {
                     const contentRef: ContentRefUser = {
                         kind: 'user',
                         user: userId,
@@ -289,10 +324,13 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
             );
         }
         case 'select': {
+            if (!isStringArray(value)) {
+                return null;
+            }
             return (
                 <Tag aria-labelledby={ariaLabelledBy}>
                     <span className={tcls('inline-flex', 'gap-2', 'flex-wrap')}>
-                        {(value as string[]).map((selectId) => {
+                        {value.map((selectId) => {
                             const option = definition.options.find(
                                 (option) => option.value === selectId
                             );
@@ -307,7 +345,7 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
                                     className={tcls(
                                         'text-sm',
                                         'whitespace-pre',
-                                        'rounded',
+                                        'rounded-sm',
                                         'py-1',
                                         'px-2',
                                         'bg-primary',
@@ -319,6 +357,57 @@ export async function RecordColumnValue<Tag extends React.ElementType = 'div'>(
                             );
                         })}
                     </span>
+                </Tag>
+            );
+        }
+        case 'image': {
+            if (!isDocumentTableImageRecord(value)) {
+                return null;
+            }
+
+            const image = context.contentContext
+                ? await resolveContentRef(
+                      'ref' in value ? value.ref : value,
+                      context.contentContext
+                  )
+                : null;
+
+            if (!image) {
+                return null;
+            }
+
+            return (
+                <Tag className={tcls('text-base')} aria-labelledby={ariaLabelledBy}>
+                    <StyledLink
+                        href={image.href}
+                        className="flex flex-row items-center gap-2"
+                        insights={
+                            image.file
+                                ? {
+                                      type: 'link_click',
+                                      link: {
+                                          target: value as ContentRef,
+                                          position: SiteInsightsLinkPosition.Content,
+                                      },
+                                  }
+                                : undefined
+                        }
+                    >
+                        <Image
+                            style={['max-h-lh', 'h-lh']}
+                            alt={image.text}
+                            sizes={[{ width: 24 }]}
+                            resize={context.contentContext?.imageResizer}
+                            sources={{
+                                light: {
+                                    src: image.href,
+                                    size: image.file?.dimensions,
+                                },
+                            }}
+                            priority="lazy"
+                        />
+                        {image.text}
+                    </StyledLink>
                 </Tag>
             );
         }

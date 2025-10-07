@@ -1,4 +1,4 @@
-import { GITBOOK_ASSETS_URL } from '@v2/lib/env';
+import { GITBOOK_ASSETS_URL } from '@/lib/env';
 
 /**
  * Return the Content Security Policy for the current environment.
@@ -7,7 +7,7 @@ export function getContentSecurityPolicy(): string {
     const csp = `
         default-src 'self' *;
         script-src 'self' 'unsafe-inline' 'unsafe-eval' *;
-        style-src 'self' 'unsafe-inline' *;
+        style-src 'self' 'unsafe-inline' blob: *;
         img-src * 'self' blob: data:;
         connect-src *;
         font-src *;

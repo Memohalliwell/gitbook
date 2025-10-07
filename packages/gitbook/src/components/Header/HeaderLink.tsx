@@ -1,3 +1,4 @@
+import type { GitBookSiteContext } from '@/lib/context';
 import {
     type ContentRef,
     type CustomizationContentLink,
@@ -5,7 +6,6 @@ import {
     type CustomizationHeaderPreset,
     SiteInsightsLinkPosition,
 } from '@gitbook/api';
-import type { GitBookSiteContext } from '@v2/lib/context';
 import assertNever from 'assert-never';
 
 import { resolveContentRef } from '@/lib/references';
@@ -13,12 +13,11 @@ import { tcls } from '@/lib/tailwind';
 
 import { Button, Link } from '../primitives';
 import {
-    Dropdown,
     type DropdownButtonProps,
     DropdownChevron,
     DropdownMenu,
     DropdownMenuItem,
-} from './Dropdown';
+} from '../primitives/DropdownMenu';
 
 export async function HeaderLink(props: {
     context: GitBookSiteContext;
@@ -33,21 +32,13 @@ export async function HeaderLink(props: {
 
     if (link.links && link.links.length > 0) {
         return (
-            <Dropdown
+            <DropdownMenu
                 className={`shrink ${customization.styling.search === 'prominent' ? 'right-0 left-auto' : null}`}
-                button={(buttonProps) => {
-                    if (!target || !link.to) {
-                        return (
-                            <HeaderItemDropdown
-                                {...buttonProps}
-                                headerPreset={headerPreset}
-                                title={link.title}
-                            />
-                        );
-                    }
-                    return (
+                button={
+                    !target || !link.to ? (
+                        <HeaderItemDropdown headerPreset={headerPreset} title={link.title} />
+                    ) : (
                         <HeaderLinkNavItem
-                            {...buttonProps}
                             linkTarget={link.to}
                             linkStyle={linkStyle}
                             headerPreset={headerPreset}
@@ -55,19 +46,18 @@ export async function HeaderLink(props: {
                             isDropdown
                             href={target?.href}
                         />
-                    );
-                }}
+                    )
+                }
+                openOnHover={true}
             >
-                <DropdownMenu>
-                    {link.links.map((subLink, index) => (
-                        <SubHeaderLink key={index} {...props} link={subLink} />
-                    ))}
-                </DropdownMenu>
-            </Dropdown>
+                {link.links.map((subLink, index) => (
+                    <SubHeaderLink key={index} {...props} link={subLink} />
+                ))}
+            </DropdownMenu>
         );
     }
 
-    if (!target || !link.to) {
+    if (!link.to) {
         return null;
     }
 
@@ -78,7 +68,7 @@ export async function HeaderLink(props: {
             headerPreset={headerPreset}
             title={link.title}
             isDropdown={false}
-            href={target.href}
+            href={target?.href}
         />
     );
 }
@@ -88,7 +78,7 @@ export type HeaderLinkNavItemProps = {
     linkStyle: NonNullable<CustomizationHeaderItem['style']>;
     headerPreset: CustomizationHeaderPreset;
     title: string;
-    href: string;
+    href?: string;
     isDropdown: boolean;
 } & DropdownButtonProps<HTMLElement>;
 
@@ -114,7 +104,7 @@ function HeaderItemButton(
     const variant = (() => {
         switch (linkStyle) {
             case 'button-secondary':
-                return 'secondary';
+                return 'header';
             case 'button-primary':
                 return 'primary';
             default:
@@ -129,10 +119,8 @@ function HeaderItemButton(
             className={tcls(
                 {
                     'button-primary':
-                        'theme-bold:bg-header-link theme-bold:text-header-background theme-bold:shadow-none theme-bold:hover:bg-header-link theme-bold:hover:text-header-background theme-bold:hover:shadow-none',
-                    'button-secondary': tcls(
-                        'theme-bold:bg-header-link/2 theme-gradient:bg-tint-base theme-muted:bg-tint-base theme-bold:text-header-link theme-bold:shadow-none theme-bold:ring-header-link/4 theme-bold:hover:bg-header-link/3 theme-bold:hover:text-header-link theme-bold:hover:shadow-none theme-bold:hover:ring-header-link/5 theme-bold:contrast-more:bg-header-background theme-bold:contrast-more:text-header-link theme-bold:contrast-more:ring-header-link theme-bold:contrast-more:hover:ring-header-link'
-                    ),
+                        'theme-bold:bg-header-link theme-bold:text-header-background theme-bold:shadow-none hover:theme-bold:bg-header-link hover:theme-bold:text-header-background hover:theme-bold:shadow-none',
+                    'button-secondary': '',
                 }[linkStyle]
             )}
             insights={{
@@ -142,33 +130,34 @@ function HeaderItemButton(
                     position: SiteInsightsLinkPosition.Header,
                 },
             }}
+            label={title}
             {...rest}
-        >
-            {title}
-        </Button>
+        />
     );
 }
 
 function getHeaderLinkClassName(_props: { headerPreset: CustomizationHeaderPreset }) {
     return tcls(
-        'flex items-center',
+        'flex items-center gap-1',
         'shrink',
         'contrast-more:underline',
         'truncate',
 
         'text-tint',
         'links-default:hover:text-primary',
+        'links-default:data-[state=open]:text-primary',
         'links-default:tint:hover:text-tint-strong',
-
+        'links-default:tint:data-[state=open]:text-tint-strong',
         'underline-offset-2',
         'links-accent:hover:underline',
+        'links-accent:data-[state=open]:underline',
         'links-accent:underline-offset-4',
         'links-accent:decoration-primary-subtle',
         'links-accent:decoration-[3px]',
         'links-accent:py-0.5', // Prevent underline from being cut off at the bottom
 
         'theme-bold:text-header-link',
-        'theme-bold:hover:text-header-link'
+        'hover:theme-bold:text-header-link/7!'
     );
 }
 
@@ -176,7 +165,7 @@ function HeaderItemLink(props: Omit<HeaderLinkNavItemProps, 'linkStyle'>) {
     const { linkTarget, headerPreset, title, isDropdown, href, ...rest } = props;
     return (
         <Link
-            href={href}
+            href={href ?? '#'}
             className={getHeaderLinkClassName({ headerPreset })}
             insights={{
                 type: 'link_click',

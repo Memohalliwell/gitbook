@@ -1,5 +1,5 @@
+import type { GitBookBaseContext } from '@/lib/context';
 import type { DocumentInlineImage } from '@gitbook/api';
-import type { GitBookBaseContext } from '@v2/lib/context';
 import assertNever from 'assert-never';
 
 import { type ResolvedContentRef, resolveContentRef } from '@/lib/references';
@@ -34,7 +34,7 @@ export async function InlineImage(props: InlineProps<DocumentInlineImage>) {
             )}
         >
             <Image
-                alt={inline.data.caption ?? ''}
+                alt={inline.data.alt ?? inline.data.caption ?? ''}
                 sizes={sizes}
                 resize={context.contentContext?.imageResizer}
                 sources={{
@@ -51,7 +51,7 @@ export async function InlineImage(props: InlineProps<DocumentInlineImage>) {
                 }}
                 priority="lazy"
                 preload
-                style={[size === 'line' ? ['max-h-[1lh]', 'h-[1lh]', 'w-auto'] : null]}
+                style={[size === 'line' ? ['max-h-lh', 'h-lh', 'w-auto'] : null]}
                 inline
                 zoom={!isInLink}
             />

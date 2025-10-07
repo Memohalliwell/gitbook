@@ -1,8 +1,11 @@
 import { argosScreenshot } from '@argos-ci/playwright';
 import {
+    CustomizationAIMode,
     CustomizationBackground,
     CustomizationCorners,
     CustomizationDefaultFont,
+    CustomizationDefaultMonospaceFont,
+    CustomizationDepth,
     type CustomizationHeaderItem,
     CustomizationHeaderPreset,
     CustomizationIconsStyle,
@@ -15,6 +18,7 @@ import {
     CustomizationThemeMode,
     type CustomizationThemedColor,
     type SiteCustomizationSettings,
+    SiteExternalLinksTarget,
 } from '@gitbook/api';
 import { type BrowserContext, type Page, type Response, expect, test } from '@playwright/test';
 import deepMerge from 'deepmerge';
@@ -34,6 +38,10 @@ export interface Test {
      * Test to run
      */
     run?: (page: Page, response: Response | null) => Promise<unknown>;
+    /**
+     * Mode for the test.
+     */
+    mode?: 'page' | 'image';
     /**
      * Whether the test should be fullscreened during testing.
      */
@@ -154,6 +162,7 @@ export function runTestCases(testCases: TestsCase[]) {
 
         test.describe(testCase.name, () => {
             for (const testEntry of testCase.tests) {
+                const { mode = 'page' } = testEntry;
                 const testFn = testEntry.only ? test.only : test;
                 testFn(testEntry.name, async ({ page, context }) => {
                     const testEntryPathname =
@@ -163,6 +172,7 @@ export function runTestCases(testCases: TestsCase[]) {
                               new URL(testEntryPathname, testCase.contentBaseURL).toString()
                           )
                         : getTestURL(testEntryPathname);
+
                     if (testEntry.cookies) {
                         await context.addCookies(
                             testEntry.cookies.map((cookie) => ({
@@ -194,24 +204,33 @@ export function runTestCases(testCases: TestsCase[]) {
                     }
                     const screenshotOptions = testEntry.screenshot;
                     if (screenshotOptions !== false) {
-                        await argosScreenshot(page, `${testCase.name} - ${testEntry.name}`, {
-                            viewports: ['macbook-16', 'macbook-13', 'ipad-2', 'iphone-x'],
-                            argosCSS: `
+                        const screenshotName = `${testCase.name} - ${testEntry.name}`;
+                        if (mode === 'image') {
+                            await argosScreenshot(page, screenshotName, {
+                                viewports: ['macbook-13'],
+                                threshold: screenshotOptions?.threshold ?? undefined,
+                                fullPage: true,
+                            });
+                        } else {
+                            await argosScreenshot(page, screenshotName, {
+                                viewports: ['macbook-16', 'macbook-13', 'ipad-2', 'iphone-x'],
+                                argosCSS: `
                             /* Hide Intercom */
                             .intercom-lightweight-app {
                                 display: none !important;
                             }
                             `,
-                            threshold: screenshotOptions?.threshold ?? undefined,
-                            fullPage: testEntry.fullPage ?? false,
-                            beforeScreenshot: async ({ runStabilization }) => {
-                                await runStabilization();
-                                await waitForIcons(page);
-                                if (screenshotOptions?.waitForTOCScrolling !== false) {
-                                    await waitForTOCScrolling(page);
-                                }
-                            },
-                        });
+                                threshold: screenshotOptions?.threshold ?? undefined,
+                                fullPage: testEntry.fullPage ?? false,
+                                beforeScreenshot: async ({ runStabilization }) => {
+                                    await runStabilization();
+                                    if (screenshotOptions?.waitForTOCScrolling !== false) {
+                                        await waitForTOCScrolling(page);
+                                    }
+                                    await waitForIcons(page);
+                                },
+                            });
+                        }
                     }
                 });
             }
@@ -263,7 +282,9 @@ export function getCustomizationURL(partial: DeepPartial<SiteCustomizationSettin
             dangerColor: { light: '#FB2C36', dark: '#FB2C36' },
             successColor: { light: '#00C950', dark: '#00C950' },
             corners: CustomizationCorners.Rounded,
+            depth: CustomizationDepth.Subtle,
             font: CustomizationDefaultFont.Inter,
+            monospaceFont: CustomizationDefaultMonospaceFont.IBMPlexMono,
             background: CustomizationBackground.Plain,
             icons: CustomizationIconsStyle.Regular,
             links: CustomizationLinksStyle.Default,
@@ -275,6 +296,9 @@ export function getCustomizationURL(partial: DeepPartial<SiteCustomizationSettin
         },
         internationalization: {
             locale: CustomizationLocale.En,
+        },
+        insights: {
+            trackingCookie: true,
         },
         favicon: {},
         header: {
@@ -294,8 +318,11 @@ export function getCustomizationURL(partial: DeepPartial<SiteCustomizationSettin
         feedback: {
             enabled: false,
         },
-        aiSearch: {
-            enabled: true,
+        ai: {
+            mode: CustomizationAIMode.None,
+        },
+        externalLinks: {
+            target: SiteExternalLinksTarget.Self,
         },
         advancedCustomization: {
             enabled: true,
@@ -305,6 +332,11 @@ export function getCustomizationURL(partial: DeepPartial<SiteCustomizationSettin
         },
         pagination: {
             enabled: true,
+        },
+        pageActions: {
+            externalAI: true,
+            markdown: true,
+            mcp: true,
         },
         trademark: {
             enabled: true,
@@ -326,23 +358,38 @@ export function getCustomizationURL(partial: DeepPartial<SiteCustomizationSettin
 /**
  * Wait for all icons present on the page to be loaded.
  */
-async function waitForIcons(page: Page) {
+export async function waitForIcons(page: Page) {
     await page.waitForFunction(() => {
-        const urls = new Set<string>();
+        const urlStates: Record<
+            string,
+            { state: 'pending'; uri: null } | { state: 'loaded'; uri: string }
+        > = (window as any).__ICONS_STATES__ || {};
+        (window as any).__ICONS_STATES__ = urlStates;
+
+        const fetchSvgAsDataUri = async (url: string): Promise<string> => {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch SVG: ${response.status}`);
+            }
+
+            const svgText = await response.text();
+            const encoded = encodeURIComponent(svgText).replace(/'/g, '%27').replace(/"/g, '%22');
+
+            return `data:image/svg+xml;charset=utf-8,${encoded}`;
+        };
+
+        const loadUrl = (url: string) => {
+            // Mark the URL as pending.
+            urlStates[url] = { state: 'pending', uri: null };
+            fetchSvgAsDataUri(url).then((uri) => {
+                urlStates[url] = { state: 'loaded', uri };
+            });
+        };
+
         const icons = Array.from(document.querySelectorAll('svg.gb-icon'));
         const results = icons.map((icon) => {
             if (!(icon instanceof SVGElement)) {
                 throw new Error('Icon is not an SVGElement');
-            }
-
-            // If loaded, good it passes the test.
-            if (icon.dataset.loadingState === 'loaded') {
-                return true;
-            }
-
-            // If not loaded yet, we need to load it.
-            if (icon.dataset.loadingState === 'pending') {
-                return false;
             }
 
             // Ignore icons that are not visible.
@@ -350,39 +397,41 @@ async function waitForIcons(page: Page) {
                 return true;
             }
 
+            const state = icon.getAttribute('data-argos-state');
+
+            if (state === 'pending') {
+                return false;
+            }
+
+            if (state === 'loaded') {
+                return true;
+            }
+
             // url("https://ka-p.fontawesome.com/releases/v6.6.0/svgs/light/moon.svg?v=2&token=a463935e93")
             const maskImage = window.getComputedStyle(icon).getPropertyValue('mask-image');
             const urlMatch = maskImage.match(/url\("([^"]+)"\)/);
-            const url = urlMatch ? urlMatch[1] : null;
+            const url = urlMatch?.[1];
 
             // If URL is invalid we throw an error.
             if (!url) {
                 throw new Error('No mask-image');
             }
 
-            // If the URL is already loaded, we just mark it as loaded.
-            if (urls.has(url)) {
-                icon.dataset.loadingState = 'loaded';
-                return true;
+            // If the URL is already queued for loading, we return the state.
+            if (urlStates[url]) {
+                if (urlStates[url].state === 'loaded') {
+                    icon.setAttribute('data-argos-state', 'pending');
+                    icon.style.maskImage = `url("${urlStates[url].uri}")`;
+                    requestAnimationFrame(() => {
+                        icon.setAttribute('data-argos-state', 'loaded');
+                    });
+                    return false;
+                }
+
+                return false;
             }
 
-            // Mark the icon as pending and load the image.
-            icon.dataset.loadingState = 'pending';
-
-            // Mark the URL as seen.
-            urls.add(url);
-
-            const img = new Image();
-            img.src = url;
-            img.decode().then(() => {
-                // Wait two frames to let the time to the icon to repaint.
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        icon.dataset.loadingState = 'loaded';
-                    });
-                });
-            });
-
+            loadUrl(url);
             return false;
         });
 

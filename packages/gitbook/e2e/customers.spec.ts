@@ -10,18 +10,18 @@ const testCases: TestsCase[] = [
             { name: 'OpenAPI', url: '/snyk-api/reference/apps', run: waitForCookiesDialog },
         ],
     },
-    {
-        name: 'Nexthink',
-        contentBaseURL: 'https://docs.nexthink.com',
-        tests: [
-            {
-                name: 'Home',
-                url: '/',
-                screenshot: { waitForTOCScrolling: false },
-                run: waitForCookiesDialog,
-            },
-        ],
-    },
+    // {
+    //     name: 'Nexthink',
+    //     contentBaseURL: 'https://docs.nexthink.com',
+    //     tests: [
+    //         {
+    //             name: 'Home',
+    //             url: '/',
+    //             screenshot: { waitForTOCScrolling: false },
+    //             run: waitForCookiesDialog,
+    //         },
+    //     ],
+    // },
     {
         name: 'asiksupport-stg.dto.kemkes.go.id',
         contentBaseURL: 'https://asiksupport-stg.dto.kemkes.go.id',
@@ -62,11 +62,11 @@ const testCases: TestsCase[] = [
         contentBaseURL: 'https://docs.gmgn.ai',
         tests: [{ name: 'Home', url: '/' }],
     },
-    {
-        name: 'docs.spicychat.ai',
-        contentBaseURL: 'https://docs.spicychat.ai',
-        tests: [{ name: 'Home', url: '/' }],
-    },
+    // {
+    //     name: 'docs.spicychat.ai',
+    //     contentBaseURL: 'https://docs.spicychat.ai',
+    //     tests: [{ name: 'Home', url: '/' }],
+    // },
     {
         name: 'docs.portainer.io',
         contentBaseURL: 'https://docs.portainer.io',
@@ -93,11 +93,6 @@ const testCases: TestsCase[] = [
         tests: [{ name: 'Home', url: '/', run: waitForCookiesDialog }],
     },
     {
-        name: 'docs.tradeonnova.io',
-        contentBaseURL: 'https://docs.tradeonnova.io',
-        tests: [{ name: 'Home', url: '/' }],
-    },
-    {
         name: 'azcoiner.gitbook.io',
         contentBaseURL: 'https://azcoiner.gitbook.io',
         tests: [{ name: 'Home', url: '/' }],
@@ -122,11 +117,11 @@ const testCases: TestsCase[] = [
         contentBaseURL: 'https://docs.gradient.network',
         tests: [{ name: 'Home', url: '/' }],
     },
-    {
-        name: 'mygate-network.gitbook.io',
-        contentBaseURL: 'https://mygate-network.gitbook.io',
-        tests: [{ name: 'Home', url: '/' }],
-    },
+    // {
+    //     name: 'mygate-network.gitbook.io',
+    //     contentBaseURL: 'https://mygate-network.gitbook.io',
+    //     tests: [{ name: 'Home', url: '/' }],
+    // },
     {
         name: 'treasurenft.gitbook.io',
         contentBaseURL: 'https://treasurenft.gitbook.io',
@@ -162,11 +157,11 @@ const testCases: TestsCase[] = [
         contentBaseURL: 'https://wiki.redmodding.org',
         tests: [{ name: 'Home', url: '/' }],
     },
-    {
-        name: 'docs.cherry-ai.com',
-        contentBaseURL: 'https://docs.cherry-ai.com',
-        tests: [{ name: 'Home', url: '/', run: waitForCookiesDialog }],
-    },
+    // {
+    //     name: 'docs.cherry-ai.com',
+    //     contentBaseURL: 'https://docs.cherry-ai.com',
+    //     tests: [{ name: 'Home', url: '/', run: waitForCookiesDialog }],
+    // },
     {
         name: 'docs.snyk.io',
         contentBaseURL: 'https://docs.snyk.io',
@@ -209,11 +204,11 @@ const testCases: TestsCase[] = [
         contentBaseURL: 'https://sosovalue-white-paper.gitbook.io',
         tests: [{ name: 'Home', url: '/' }],
     },
-    {
-        name: 'docs.revrobotics.com',
-        contentBaseURL: 'https://docs.revrobotics.com',
-        tests: [{ name: 'Home', url: '/', run: waitForCookiesDialog }],
-    },
+    // {
+    //     name: 'docs.revrobotics.com',
+    //     contentBaseURL: 'https://docs.revrobotics.com',
+    //     tests: [{ name: 'Home', url: '/', run: waitForCookiesDialog }],
+    // },
     {
         name: 'chartschool.stockcharts.com',
         contentBaseURL: 'https://chartschool.stockcharts.com',
@@ -243,6 +238,15 @@ const testCases: TestsCase[] = [
         name: 'docs.fluentbit.io',
         contentBaseURL: 'https://docs.fluentbit.io',
         tests: [{ name: 'Home', url: '/', run: waitForCookiesDialog }],
+    },
+    {
+        name: 'run-ai-docs.nvidia.com',
+        contentBaseURL: 'https://run-ai-docs.nvidia.com',
+        skip: process.env.ARGOS_BUILD_NAME !== 'customers-v2',
+        tests: [
+            { name: 'Home', url: '/' },
+            { name: 'OG Image', url: '/~gitbook/ogimage/h17zQIFwy3MaafVNmItO', mode: 'image' },
+        ],
     },
 ];
 

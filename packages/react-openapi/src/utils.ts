@@ -1,5 +1,8 @@
 import type { AnyObject, OpenAPIV3, OpenAPIV3_1 } from '@gitbook/openapi-parser';
+import type { OpenAPIUniversalContext } from './context';
 import { stringifyOpenAPI } from './stringifyOpenAPI';
+import { tString } from './translate';
+import type { OpenAPIOperationData, OpenAPISecuritySchemeWithRequired } from './types';
 
 export function checkIsReference(input: unknown): input is OpenAPIV3.ReferenceObject {
     return typeof input === 'object' && !!input && '$ref' in input;
@@ -148,4 +151,144 @@ function shouldDisplayExample(schema: OpenAPIV3.SchemaObject): boolean {
             schema.example !== null &&
             Object.keys(schema.example).length > 0)
     );
+}
+
+/**
+ * Get the class name for a status code.
+ * 1xx: informational
+ * 2xx: success
+ * 3xx: redirect
+ * 4xx, 5xx: error
+ */
+export function getStatusCodeClassName(statusCode: number | string): string {
+    const category = getStatusCodeCategory(statusCode);
+    switch (category) {
+        case 1:
+            return 'informational';
+        case 2:
+            return 'success';
+        case 3:
+            return 'redirect';
+        case 4:
+        case 5:
+            return 'error';
+        default:
+            return 'unknown';
+    }
+}
+
+/**
+ * Get a default label for a status code.
+ * This is used when there is no label provided in the OpenAPI spec.
+ * 1xx: Information
+ * 2xx: Success
+ * 3xx: Redirect
+ * 4xx, 5xx: Error
+ */
+export function getStatusCodeDefaultLabel(
+    statusCode: number | string,
+    context: OpenAPIUniversalContext
+): string {
+    const category = getStatusCodeCategory(statusCode);
+    switch (category) {
+        case 1:
+            return tString(context.translation, 'information');
+        case 2:
+            return tString(context.translation, 'success');
+        case 3:
+            return tString(context.translation, 'redirect');
+        case 4:
+        case 5:
+            return tString(context.translation, 'error');
+        default:
+            return '';
+    }
+}
+
+function getStatusCodeCategory(statusCode: number | string): number | string {
+    const code = typeof statusCode === 'string' ? Number.parseInt(statusCode, 10) : statusCode;
+
+    if (Number.isNaN(code) || code < 100 || code >= 600) {
+        return 'unknown';
+    }
+
+    // Determine the category of the status code based on the first digit
+    const category = Math.floor(code / 100);
+
+    return category;
+}
+
+export function getSchemaTitle(schema: OpenAPIV3.SchemaObject): string {
+    // Otherwise try to infer a nice title
+    let type = 'any';
+
+    if (schema.enum || schema['x-enumDescriptions'] || schema['x-gitbook-enum']) {
+        type = `${schema.type} · enum`;
+        // check array AND schema.items as this is sometimes null despite what the type indicates
+    } else if (schema.type === 'array' && !!schema.items) {
+        type = `${getSchemaTitle(schema.items)}[]`;
+    } else if (Array.isArray(schema.type)) {
+        type = schema.type.join(' | ');
+    } else if (schema.type || schema.properties) {
+        type = schema.type ?? 'object';
+
+        if (schema.format) {
+            type += ` · ${schema.format}`;
+        }
+
+        // Only add the title if it's an object (no need for the title of a string, number, etc.)
+        if (type === 'object' && schema.title) {
+            type += ` · ${schema.title.replaceAll(' ', '')}`;
+        }
+    }
+
+    if ('anyOf' in schema) {
+        type = 'any of';
+    } else if ('oneOf' in schema) {
+        type = 'one of';
+    } else if ('allOf' in schema) {
+        type = 'all of';
+    } else if ('not' in schema) {
+        type = 'not';
+    }
+
+    return type;
+}
+
+export type OperationSecurityInfo = {
+    key: string;
+    label: string;
+    schemes: OpenAPISecuritySchemeWithRequired[];
+};
+
+/**
+ * Extract security information for an operation based on its security requirements and the spec security schemes.
+ */
+export function extractOperationSecurityInfo(args: {
+    securityRequirement: OpenAPIV3.OperationObject['security'];
+    securities: OpenAPIOperationData['securities'];
+}): OperationSecurityInfo[] {
+    const { securityRequirement, securities } = args;
+    const securitiesMap = new Map(securities);
+
+    // When no security requirement include every schemes
+    if (!securityRequirement || securityRequirement.length === 0) {
+        return securities.map(([key, security]) => ({
+            key,
+            label: key,
+            schemes: [security],
+        }));
+    }
+
+    return securityRequirement.map((requirement, idx) => {
+        const schemeKeys = Object.keys(requirement);
+
+        return {
+            key: `security-${idx}`,
+            label: schemeKeys.join(' & '),
+            schemes: schemeKeys
+                .map((schemeKey) => securitiesMap.get(schemeKey))
+                .filter((s) => s !== undefined),
+        };
+    });
 }

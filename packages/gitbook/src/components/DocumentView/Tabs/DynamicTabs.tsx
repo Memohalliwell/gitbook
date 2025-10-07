@@ -3,8 +3,10 @@
 import React, { useCallback, useMemo } from 'react';
 
 import { useHash, useIsMounted } from '@/components/hooks';
-import * as storage from '@/lib/local-storage';
+import { getLocalStorageItem, setLocalStorageItem } from '@/lib/browser';
 import { type ClassValue, tcls } from '@/lib/tailwind';
+import type { DocumentBlockTabs } from '@gitbook/api';
+import { HashLinkButton, hashLinkButtonWrapperStyles } from '../HashLinkButton';
 
 interface TabsState {
     activeIds: {
@@ -18,7 +20,7 @@ const defaultTabsState: TabsState = {
     activeTitles: [],
 };
 
-let globalTabsState = storage.getItem('@gitbook/tabsState', defaultTabsState);
+let globalTabsState = getLocalStorageItem('@gitbook/tabsState', defaultTabsState);
 const listeners = new Set<() => void>();
 
 function useTabsState() {
@@ -31,7 +33,7 @@ function useTabsState() {
 
     const setTabsState = useCallback((updater: (previous: TabsState) => TabsState) => {
         globalTabsState = updater(globalTabsState);
-        storage.setItem('@gitbook/tabsState', globalTabsState);
+        setLocalStorageItem('@gitbook/tabsState', globalTabsState);
         listeners.forEach((listener) => listener());
     }, []);
     const state = React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -68,9 +70,10 @@ export function DynamicTabs(
     props: TabsInput & {
         tabsBody: React.ReactNode[];
         style: ClassValue;
+        block: DocumentBlockTabs;
     }
 ) {
-    const { id, tabs, tabsBody, style } = props;
+    const { id, block, tabs, tabsBody, style } = props;
 
     const hash = useHash();
     const [tabsState, setTabsState] = useTabsState();
@@ -141,13 +144,13 @@ export function DynamicTabs(
         <div
             className={tcls(
                 'rounded-lg',
-                'straight-corners:rounded-sm',
+                'straight-corners:rounded-xs',
                 'ring-1',
                 'ring-inset',
                 'ring-tint-subtle',
                 'flex',
-                'overflow-hidden',
                 'flex-col',
+                'overflow-hidden',
                 style
             )}
         >
@@ -158,39 +161,29 @@ export function DynamicTabs(
                     'inline-flex',
                     'flex-row',
                     'self-stretch',
-                    'after:flex-[1]',
+                    'after:flex-1',
                     'after:bg-tint-12/1',
                     // if last tab is selected, apply rounded to :after element
                     '[&:has(button.active-tab:last-of-type):after]:rounded-bl-md'
                 )}
             >
                 {tabs.map((tab) => (
-                    <button
+                    <div
                         key={tab.id}
-                        role="tab"
-                        aria-selected={active.id === tab.id}
-                        aria-controls={getTabPanelId(tab.id)}
-                        id={getTabButtonId(tab.id)}
-                        onClick={() => {
-                            onSelectTab(tab);
-                        }}
                         className={tcls(
+                            hashLinkButtonWrapperStyles,
+                            'flex',
+                            'items-center',
+                            'gap-3.5',
+
                             //prev from active-tab
                             '[&:has(+_.active-tab)]:rounded-br-md',
 
                             //next from active-tab
-                            '[.active-tab_+_&]:rounded-bl-md',
+                            '[.active-tab+&]:rounded-bl-md',
 
                             //next from active-tab
                             '[.active-tab_+_:after]:rounded-br-md',
-
-                            'inline-block',
-                            'text-sm',
-                            'px-3.5',
-                            'py-2',
-                            'transition-[color]',
-                            'font-[500]',
-                            'relative',
 
                             'after:transition-colors',
                             'after:border-r',
@@ -200,32 +193,60 @@ export function DynamicTabs(
                             'after:border-tint',
                             'after:top-[15%]',
                             'after:h-[70%]',
-                            'after:w-[1px]',
+                            'after:w-px',
+
+                            'px-3.5',
+                            'py-2',
 
                             'last:after:border-transparent',
 
                             'text-tint',
                             'bg-tint-12/1',
                             'hover:text-tint-strong',
-
-                            'truncate',
                             'max-w-full',
+                            'truncate',
 
-                            active.id === tab.id
+                            active?.id === tab.id
                                 ? [
                                       'shrink-0',
                                       'active-tab',
                                       'text-tint-strong',
                                       'bg-transparent',
-                                      'after:[&.active-tab]:border-transparent',
-                                      'after:[:has(+_&.active-tab)]:border-transparent',
-                                      'after:[:has(&_+)]:border-transparent',
+                                      '[&.active-tab]:after:border-transparent',
+                                      '[:has(+_&.active-tab)]:after:border-transparent',
+                                      '[:has(&_+)]:after:border-transparent',
                                   ]
                                 : null
                         )}
                     >
-                        {tab.title}
-                    </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={active?.id === tab.id}
+                            aria-controls={getTabPanelId(tab.id)}
+                            id={getTabButtonId(tab.id)}
+                            onClick={() => {
+                                onSelectTab(tab);
+                            }}
+                            className={tcls(
+                                'inline-block',
+                                'text-sm',
+                                'transition-[color]',
+                                'font-medium',
+                                'relative',
+                                'max-w-full',
+                                'truncate'
+                            )}
+                        >
+                            {tab.title}
+                        </button>
+
+                        <HashLinkButton
+                            id={getTabButtonId(tab.id)}
+                            block={block}
+                            label="Direct link to tab"
+                        />
+                    </div>
                 ))}
             </div>
             {tabs.map((tab, index) => (
@@ -234,7 +255,7 @@ export function DynamicTabs(
                     role="tabpanel"
                     id={getTabPanelId(tab.id)}
                     aria-labelledby={getTabButtonId(tab.id)}
-                    className={tcls('p-4', tab.id !== active.id ? 'hidden' : null)}
+                    className={tcls('p-4', tab.id !== active?.id ? 'hidden' : null)}
                 >
                     {tabsBody[index]}
                 </div>

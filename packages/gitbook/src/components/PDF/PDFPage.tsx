@@ -1,3 +1,5 @@
+import type { GitBookSiteContext, GitBookSpaceContext } from '@/lib/context';
+import type { GitBookLinker } from '@/lib/links';
 import {
     type Revision,
     type RevisionPageDocument,
@@ -8,9 +10,6 @@ import {
     type Space,
 } from '@gitbook/api';
 import { Icon } from '@gitbook/icons';
-import type { GitBookSiteContext, GitBookSpaceContext } from '@v2/lib/context';
-import { getPageDocument } from '@v2/lib/data';
-import type { GitBookLinker } from '@v2/lib/links';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import * as React from 'react';
@@ -20,7 +19,6 @@ import { TrademarkLink } from '@/components/TableOfContents/Trademark';
 import type { PolymorphicComponentProp } from '@/components/utils/types';
 import { getSpaceLanguage } from '@/intl/server';
 import { tString } from '@/intl/translate';
-import { getPagePDFContainerId } from '@/lib/links';
 import { resolvePageId } from '@/lib/pages';
 import { tcls } from '@/lib/tailwind';
 import { defaultCustomization } from '@/lib/utils';
@@ -29,6 +27,8 @@ import { type PDFSearchParams, getPDFSearchParams } from './urls';
 import { PageControlButtons } from './PageControlButtons';
 import { PrintButton } from './PrintButton';
 import './pdf.css';
+import { sanitizeGitBookAppURL } from '@/lib/app';
+import { getPageDocument } from '@/lib/data';
 
 const DEFAULT_LIMIT = 100;
 
@@ -53,14 +53,14 @@ export async function PDFPage(props: {
 }) {
     const baseContext = props.context;
     const searchParams = new URLSearchParams(props.searchParams);
-    const pdfParams = getPDFSearchParams(new URLSearchParams(searchParams));
+    const pdfParams = getPDFSearchParams(searchParams);
 
     const customization =
         'customization' in baseContext ? baseContext.customization : defaultCustomization();
-    const language = getSpaceLanguage(customization);
+    const language = getSpaceLanguage(baseContext);
 
     // Compute the pages to render
-    const { pages, total } = selectPages(baseContext.pages, pdfParams);
+    const { pages, total } = selectPages(baseContext.revision.pages, pdfParams);
     const pageIds = pages.map(
         ({ page }) => [page.id, getPagePDFContainerId(page)] as [string, string]
     );
@@ -92,7 +92,10 @@ export async function PDFPage(props: {
                 <div className={tcls('fixed', 'left-12', 'top-12', 'print:hidden', 'z-50')}>
                     <a
                         title={tString(language, 'pdf_goback')}
-                        href={pdfParams.back ?? linker.toAbsoluteURL(linker.toPathInSpace(''))}
+                        href={
+                            (pdfParams.back ? sanitizeGitBookAppURL(pdfParams.back) : null) ??
+                            linker.toAbsoluteURL(linker.toPathInSpace(''))
+                        }
                         className={tcls(
                             'flex',
                             'flex-row',
@@ -104,7 +107,7 @@ export async function PDFPage(props: {
                             'p-4',
                             'rounded-full',
                             'bg-white',
-                            'shadow-sm',
+                            'shadow-xs',
                             'hover:shadow-md',
                             'border-slate-300',
                             'border'
@@ -129,7 +132,7 @@ export async function PDFPage(props: {
                         'p-4',
                         'rounded-full',
                         'bg-white',
-                        'shadow-sm',
+                        'shadow-xs',
                         'hover:shadow-md',
                         'border-slate-300',
                         'border'
@@ -146,8 +149,7 @@ export async function PDFPage(props: {
                 trademark={
                     customization.trademark.enabled ? (
                         <TrademarkLink
-                            space={context.space}
-                            customization={customization}
+                            context={context}
                             placement={SiteInsightsTrademarkPlacement.Pdf}
                         />
                     ) : null
@@ -221,8 +223,7 @@ async function PDFPageDocument(props: {
     context: GitBookSpaceContext;
 }) {
     const { page, context } = props;
-    const { space } = context;
-    const document = await getPageDocument(context.dataFetcher, space, page);
+    const document = await getPageDocument(context, page);
 
     return (
         <PrintPage id={getPagePDFContainerId(page)}>
@@ -243,6 +244,7 @@ async function PDFPageDocument(props: {
                             page,
                         },
                         getId: (id) => getPagePDFContainerId(page, id),
+                        withLinkPreviews: false, // We don't want to render link previews in the PDF.
                     }}
                     // We consider all pages as offscreen in PDF mode
                     // to ensure we can efficiently render as many pages as possible
@@ -277,7 +279,7 @@ function PrintPage(
                 'print:p-0',
                 'shadow-xl',
                 'print:shadow-none',
-                'rounded-sm',
+                'rounded-xs',
                 'bg-white',
                 'min-h-[29.7cm]',
                 'print:min-h-0',
@@ -352,4 +354,14 @@ function selectPages(
         return flattenPage(page, 0);
     });
     return limitTo(allPages);
+}
+
+/**
+ * Create the HTML ID for the container of a page or a given anchor in it.
+ */
+function getPagePDFContainerId(
+    page: RevisionPageDocument | RevisionPageGroup,
+    anchor?: string
+): string {
+    return `pdf-page-${page.id}${anchor ? `-${anchor}` : ''}`;
 }

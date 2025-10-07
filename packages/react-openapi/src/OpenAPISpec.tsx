@@ -5,21 +5,33 @@ import { OpenAPIResponses } from './OpenAPIResponses';
 import { OpenAPISchemaProperties } from './OpenAPISchemaServer';
 import { OpenAPISecurities } from './OpenAPISecurities';
 import { StaticSection } from './StaticSection';
-import type { OpenAPIClientContext, OpenAPIOperationData } from './types';
+import type { OpenAPIClientContext } from './context';
+import { tString } from './translate';
+import type { OpenAPIOperationData, OpenAPIWebhookData } from './types';
 import { parameterToProperty } from './utils';
 
-export function OpenAPISpec(props: { data: OpenAPIOperationData; context: OpenAPIClientContext }) {
+export function OpenAPISpec(props: {
+    data: OpenAPIOperationData | OpenAPIWebhookData;
+    context: OpenAPIClientContext;
+}) {
     const { data, context } = props;
 
-    const { operation, securities } = data;
+    const { operation } = data;
 
-    const parameters = operation.parameters ?? [];
-    const parameterGroups = groupParameters(parameters);
+    const parameters = deduplicateParameters(operation.parameters ?? []);
+    const parameterGroups = groupParameters(parameters, context);
+
+    const securities = 'securities' in data ? data.securities : [];
 
     return (
         <>
             {securities.length > 0 ? (
-                <OpenAPISecurities key="securities" securities={securities} context={context} />
+                <OpenAPISecurities
+                    key="securities"
+                    securityRequirement={operation.security}
+                    securities={securities}
+                    context={context}
+                />
             ) : null}
 
             {parameterGroups.map((group) => {
@@ -42,6 +54,7 @@ export function OpenAPISpec(props: { data: OpenAPIOperationData; context: OpenAP
                     key="body"
                     requestBody={operation.requestBody}
                     context={context}
+                    data={data}
                 />
             ) : null}
             {operation.responses ? (
@@ -55,7 +68,10 @@ export function OpenAPISpec(props: { data: OpenAPIOperationData; context: OpenAP
     );
 }
 
-function groupParameters(parameters: OpenAPI.Parameters): Array<{
+function groupParameters(
+    parameters: OpenAPI.Parameters,
+    context: OpenAPIClientContext
+): Array<{
     key: string;
     label: string;
     parameters: OpenAPI.Parameters;
@@ -72,7 +88,7 @@ function groupParameters(parameters: OpenAPI.Parameters): Array<{
         .filter((parameter) => parameter.in)
         .forEach((parameter) => {
             const key = parameter.in;
-            const label = getParameterGroupName(parameter.in);
+            const label = getParameterGroupName(parameter.in, context);
             const group = groups.find((group) => group.key === key);
             if (group) {
                 group.parameters.push(parameter);
@@ -90,15 +106,38 @@ function groupParameters(parameters: OpenAPI.Parameters): Array<{
     return groups;
 }
 
-function getParameterGroupName(paramIn: string): string {
+function getParameterGroupName(paramIn: string, context: OpenAPIClientContext): string {
     switch (paramIn) {
         case 'path':
-            return 'Path parameters';
+            return tString(context.translation, 'path_parameters');
         case 'query':
-            return 'Query parameters';
+            return tString(context.translation, 'query_parameters');
         case 'header':
-            return 'Header parameters';
+            return tString(context.translation, 'header_parameters');
         default:
             return paramIn;
     }
+}
+
+/** Deduplicate parameters by name and in.
+ * Some specs have both parameters define at path and operation level.
+ * We only want to display one of them.
+ * Parameters can have the wrong type (object instead of array) sometimes, we just return an empty array in that case.
+ */
+function deduplicateParameters(parameters: OpenAPI.Parameters): OpenAPI.Parameters {
+    const seen = new Set();
+
+    return Array.isArray(parameters)
+        ? parameters.filter((param) => {
+              const key = `${param.name}:${param.in}`;
+
+              if (seen.has(key)) {
+                  return false;
+              }
+
+              seen.add(key);
+
+              return true;
+          })
+        : [];
 }

@@ -1,86 +1,70 @@
 'use client';
 import clsx from 'clsx';
-import { useCallback } from 'react';
-import { useStore } from 'zustand';
 import type { MediaTypeRenderer } from './OpenAPICodeSample';
-import { getOrCreateTabStoreByKey } from './useSyncedTabsGlobalState';
-
-type MediaTypeState = {
-    mediaType: string;
-    setMediaType: (mediaType: string) => void;
-};
-
-function useMediaTypeState(
-    data: { method: string; path: string },
-    defaultKey: string
-): MediaTypeState {
-    const { method, path } = data;
-    const store = useStore(getOrCreateTabStoreByKey(`media-type-${method}-${path}`, defaultKey));
-    if (typeof store.tabKey !== 'string') {
-        throw new Error('Media type key is not a string');
-    }
-    return {
-        mediaType: store.tabKey,
-        setMediaType: useCallback((index: string) => store.setTabKey(index), [store.setTabKey]),
-    };
-}
-
-function useMediaTypeSampleIndexState(data: { method: string; path: string }, mediaType: string) {
-    const { method, path } = data;
-    const store = useStore(
-        getOrCreateTabStoreByKey(`media-type-sample-${mediaType}-${method}-${path}`, 0)
-    );
-    if (typeof store.tabKey !== 'number') {
-        throw new Error('Example key is not a number');
-    }
-    return {
-        index: store.tabKey,
-        setIndex: useCallback((index: number) => store.setTabKey(index), [store.setTabKey]),
-    };
-}
+import { OpenAPISelect, OpenAPISelectItem, useSelectState } from './OpenAPISelect';
+import { createStateKey } from './utils';
 
 export function OpenAPIMediaTypeExamplesSelector(props: {
     method: string;
     path: string;
     renderers: MediaTypeRenderer[];
+    selectIcon?: React.ReactNode;
+    blockKey?: string;
 }) {
-    const { method, path, renderers } = props;
+    const { method, path, renderers, selectIcon, blockKey } = props;
     if (!renderers[0]) {
         throw new Error('No renderers provided');
     }
-    const state = useMediaTypeState({ method, path }, renderers[0].mediaType);
-    const selected = renderers.find((r) => r.mediaType === state.mediaType) || renderers[0];
+    const stateKey = createStateKey('request-body-media-type', blockKey);
+    const state = useSelectState(stateKey, renderers[0].mediaType);
+    const selected = renderers.find((r) => r.mediaType === state.key) || renderers[0];
 
     return (
         <div className="openapi-codesample-selectors">
-            <MediaTypeSelector state={state} renderers={renderers} />
-            <ExamplesSelector method={method} path={path} renderer={selected} />
+            <MediaTypeSelector selectIcon={selectIcon} stateKey={stateKey} renderers={renderers} />
+            <ExamplesSelector
+                selectIcon={selectIcon}
+                method={method}
+                path={path}
+                renderer={selected}
+            />
         </div>
     );
 }
 
 function MediaTypeSelector(props: {
-    state: MediaTypeState;
+    stateKey: string;
     renderers: MediaTypeRenderer[];
+    selectIcon?: React.ReactNode;
 }) {
-    const { renderers, state } = props;
+    const { renderers, stateKey, selectIcon } = props;
 
     if (renderers.length < 2) {
         return null;
     }
 
+    const items = renderers.map((renderer) => ({
+        key: renderer.mediaType,
+        label: renderer.mediaType,
+    }));
+
     return (
-        <select
+        <OpenAPISelect
             className={clsx('openapi-select')}
-            value={state.mediaType}
-            onChange={(e) => state.setMediaType(e.target.value)}
+            items={renderers.map((renderer) => ({
+                key: renderer.mediaType,
+                label: renderer.mediaType,
+            }))}
+            icon={selectIcon}
+            stateKey={stateKey}
+            placement="bottom start"
         >
-            {renderers.map((renderer) => (
-                <option key={renderer.mediaType} value={renderer.mediaType}>
-                    {renderer.mediaType}
-                </option>
+            {items.map((item) => (
+                <OpenAPISelectItem key={item.key} id={item.key} value={item}>
+                    {item.label}
+                </OpenAPISelectItem>
             ))}
-        </select>
+        </OpenAPISelect>
     );
 }
 
@@ -88,25 +72,31 @@ function ExamplesSelector(props: {
     method: string;
     path: string;
     renderer: MediaTypeRenderer;
+    selectIcon?: React.ReactNode;
 }) {
-    const { method, path, renderer } = props;
-    const state = useMediaTypeSampleIndexState({ method, path }, renderer.mediaType);
+    const { method, path, renderer, selectIcon } = props;
     if (renderer.examples.length < 2) {
         return null;
     }
 
+    const items = renderer.examples.map((example, index) => ({
+        key: index,
+        label: example.example.summary || `Example ${index + 1}`,
+    }));
+
     return (
-        <select
-            className={clsx('openapi-select')}
-            value={String(state.index)}
-            onChange={(e) => state.setIndex(Number(e.target.value))}
+        <OpenAPISelect
+            items={items}
+            icon={selectIcon}
+            stateKey={`media-type-sample-${renderer.mediaType}-${method}-${path}`}
+            placement="bottom start"
         >
-            {renderer.examples.map((example, index) => (
-                <option key={index} value={index}>
-                    {example.example.summary || `Example ${index + 1}`}
-                </option>
+            {items.map((item) => (
+                <OpenAPISelectItem key={item.key} id={item.key} value={item}>
+                    {item.label}
+                </OpenAPISelectItem>
             ))}
-        </select>
+        </OpenAPISelect>
     );
 }
 
@@ -114,14 +104,18 @@ export function OpenAPIMediaTypeExamplesBody(props: {
     method: string;
     path: string;
     renderers: MediaTypeRenderer[];
+    blockKey?: string;
 }) {
-    const { renderers, method, path } = props;
+    const { renderers, method, path, blockKey } = props;
     if (!renderers[0]) {
         throw new Error('No renderers provided');
     }
-    const mediaTypeState = useMediaTypeState({ method, path }, renderers[0].mediaType);
-    const selected =
-        renderers.find((r) => r.mediaType === mediaTypeState.mediaType) ?? renderers[0];
+
+    const mediaTypeState = useSelectState(
+        createStateKey('request-body-media-type', blockKey),
+        renderers[0].mediaType
+    );
+    const selected = renderers.find((r) => r.mediaType === mediaTypeState.key) ?? renderers[0];
     if (selected.examples.length === 0) {
         return selected.element;
     }
@@ -130,10 +124,13 @@ export function OpenAPIMediaTypeExamplesBody(props: {
 
 function ExamplesBody(props: { method: string; path: string; renderer: MediaTypeRenderer }) {
     const { method, path, renderer } = props;
-    const exampleState = useMediaTypeSampleIndexState({ method, path }, renderer.mediaType);
-    const example = renderer.examples[exampleState.index] ?? renderer.examples[0];
+    const exampleState = useSelectState(
+        `media-type-sample-${renderer.mediaType}-${method}-${path}`,
+        renderer.mediaType
+    );
+    const example = renderer.examples[Number(exampleState.key)] ?? renderer.examples[0];
     if (!example) {
-        throw new Error(`No example found for index ${exampleState.index}`);
+        throw new Error(`No example found for key ${exampleState.key}`);
     }
     return example.element;
 }

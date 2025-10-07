@@ -1,19 +1,25 @@
+import yaml from 'js-yaml';
 import {
     isCSV,
     isFormData,
     isFormUrlEncoded,
     isGraphQL,
+    isJSON,
     isPDF,
     isPlainObject,
     isText,
     isXML,
+    isYAML,
 } from './contentTypeChecks';
 import { json2xml } from './json2xml';
 import { stringifyOpenAPI } from './stringifyOpenAPI';
 
 export interface CodeSampleInput {
     method: string;
-    url: string;
+    url: {
+        origin: string;
+        path: string;
+    };
     headers?: Record<string, string>;
     body?: any;
 }
@@ -27,126 +33,10 @@ export interface CodeSampleGenerator {
 
 export const codeSampleGenerators: CodeSampleGenerator[] = [
     {
-        id: 'curl',
-        label: 'cURL',
-        syntax: 'bash',
-        generate: ({ method, url, headers, body }) => {
-            const separator = ' \\\n';
-
-            const lines: string[] = ['curl -L'];
-
-            if (method.toUpperCase() !== 'GET') {
-                lines.push(`--request ${method.toUpperCase()}`);
-            }
-
-            lines.push(`--url '${url}'`);
-
-            if (body) {
-                const bodyContent = BodyGenerators.getCurlBody(body, headers);
-
-                if (bodyContent) {
-                    body = bodyContent.body;
-                    headers = bodyContent.headers;
-                }
-            }
-
-            if (headers && Object.keys(headers).length > 0) {
-                Object.entries(headers).forEach(([key, value]) => {
-                    lines.push(`--header '${key}: ${value}'`);
-                });
-            }
-
-            if (body) {
-                if (Array.isArray(body)) {
-                    lines.push(...body);
-                } else {
-                    lines.push(body);
-                }
-            }
-
-            return lines.map((line, index) => (index > 0 ? indent(line, 2) : line)).join(separator);
-        },
-    },
-    {
-        id: 'javascript',
-        label: 'JavaScript',
-        syntax: 'javascript',
-        generate: ({ method, url, headers, body }) => {
-            let code = '';
-
-            if (body) {
-                const lines = BodyGenerators.getJavaScriptBody(body, headers);
-
-                if (lines) {
-                    // add the generated code to the top
-                    code += lines.code;
-                    body = lines.body;
-                    headers = lines.headers;
-                }
-            }
-
-            code += `const response = await fetch('${url}', {
-    method: '${method.toUpperCase()}',\n`;
-
-            if (headers && Object.keys(headers).length > 0) {
-                code += indent(`headers: ${stringifyOpenAPI(headers, null, 2)},\n`, 4);
-            }
-
-            if (body) {
-                code += indent(`body: ${body}\n`, 4);
-            }
-
-            code += '});\n\n';
-            code += 'const data = await response.json();';
-
-            return code;
-        },
-    },
-    {
-        id: 'python',
-        label: 'Python',
-        syntax: 'python',
-        generate: ({ method, url, headers, body }) => {
-            let code = 'import requests\n\n';
-
-            if (body) {
-                const lines = BodyGenerators.getPythonBody(body, headers);
-
-                // add the generated code to the top
-                if (lines) {
-                    code += lines.code;
-                    body = lines.body;
-                    headers = lines.headers;
-                }
-            }
-
-            code += `response = requests.${method.toLowerCase()}(\n`;
-            code += indent(`"${url}",\n`, 4);
-
-            if (headers && Object.keys(headers).length > 0) {
-                code += indent(`headers=${stringifyOpenAPI(headers)},\n`, 4);
-            }
-
-            if (body) {
-                if (body === 'files') {
-                    code += indent(`files=${body}\n`, 4);
-                } else {
-                    code += indent(`data=${stringifyOpenAPI(body)}\n`, 4);
-                }
-            }
-
-            code += ')\n\n';
-            code += 'data = response.json()';
-            return code;
-        },
-    },
-    {
         id: 'http',
         label: 'HTTP',
-        syntax: 'bash',
-        generate: ({ method, url, headers = {}, body }: CodeSampleInput) => {
-            const { host, path } = parseHostAndPath(url);
-
+        syntax: 'http',
+        generate: ({ method, url: { origin, path }, headers = {}, body }: CodeSampleInput) => {
             if (body) {
                 // if we had a body add a content length header
                 const bodyContent = body ? stringifyOpenAPI(body) : '';
@@ -180,10 +70,127 @@ export const codeSampleGenerators: CodeSampleGenerator[] = [
             const bodyString = body ? `\n${body}` : '';
 
             const httpRequest = `${method.toUpperCase()} ${decodeURI(path)} HTTP/1.1
-Host: ${host}
+Host: ${origin.replaceAll(/https*:\/\//g, '')}
 ${headerString}${bodyString}`;
 
             return httpRequest;
+        },
+    },
+    {
+        id: 'curl',
+        label: 'cURL',
+        syntax: 'bash',
+        generate: ({ method, url: { origin, path }, headers, body }) => {
+            const separator = ' \\\n';
+
+            const lines: string[] = ['curl -L'];
+
+            if (method.toUpperCase() !== 'GET') {
+                lines.push(`--request ${method.toUpperCase()}`);
+            }
+
+            lines.push(`--url '${origin}${path}'`);
+
+            if (body) {
+                const bodyContent = BodyGenerators.getCurlBody(body, headers);
+
+                if (bodyContent) {
+                    body = bodyContent.body;
+                    headers = bodyContent.headers;
+                }
+            }
+
+            if (headers && Object.keys(headers).length > 0) {
+                Object.entries(headers).forEach(([key, value]) => {
+                    lines.push(`--header '${key}: ${value}'`);
+                });
+            }
+
+            if (body) {
+                if (Array.isArray(body)) {
+                    lines.push(...body);
+                } else {
+                    lines.push(body);
+                }
+            }
+
+            return lines.map((line, index) => (index > 0 ? indent(line, 2) : line)).join(separator);
+        },
+    },
+    {
+        id: 'javascript',
+        label: 'JavaScript',
+        syntax: 'javascript',
+        generate: ({ method, url: { origin, path }, headers, body }) => {
+            let code = '';
+
+            if (body) {
+                const lines = BodyGenerators.getJavaScriptBody(body, headers);
+
+                if (lines) {
+                    // add the generated code to the top
+                    code += lines.code;
+                    body = lines.body;
+                    headers = lines.headers;
+                }
+            }
+
+            code += `const response = await fetch('${origin}${path}', {
+    method: '${method.toUpperCase()}',\n`;
+
+            if (headers && Object.keys(headers).length > 0) {
+                code += indent(`headers: ${stringifyOpenAPI(headers, null, 2)},\n`, 4);
+            }
+
+            if (body) {
+                code += indent(`body: ${body}\n`, 4);
+            }
+
+            code += '});\n\n';
+            code += 'const data = await response.json();';
+
+            return code;
+        },
+    },
+    {
+        id: 'python',
+        label: 'Python',
+        syntax: 'python',
+        generate: ({ method, url: { origin, path }, headers, body }) => {
+            const contentType = headers?.['Content-Type'];
+            let code = `${isJSON(contentType) ? 'import json\n' : ''}import requests\n\n`;
+
+            if (body) {
+                const lines = BodyGenerators.getPythonBody(body, headers);
+
+                // add the generated code to the top
+                if (lines) {
+                    code += lines.code;
+                    body = lines.body;
+                    headers = lines.headers;
+                }
+            }
+
+            code += `response = requests.${method.toLowerCase()}(\n`;
+            code += indent(`"${origin}${path}",\n`, 4);
+
+            if (headers && Object.keys(headers).length > 0) {
+                code += indent(`headers=${stringifyOpenAPI(headers)},\n`, 4);
+            }
+
+            if (body) {
+                if (body === 'files') {
+                    code += indent(`files=${body}\n`, 4);
+                } else if (isJSON(contentType)) {
+                    code += indent(`data=json.dumps(${body})\n`, 4);
+                } else {
+                    code += indent(`data=${body}\n`, 4);
+                }
+            }
+
+            code += ')\n\n';
+            code += 'data = response.json()';
+            return code;
         },
     },
 ];
@@ -252,6 +259,8 @@ const BodyGenerators = {
         } else if (isPDF(contentType)) {
             // We use --data-binary to avoid cURL converting newlines to \r\n
             body = `--data-binary '@${String(body)}'`;
+        } else if (isYAML(contentType)) {
+            body = `--data-binary $'${yaml.dump(body).replace(/'/g, '').replace(/\\n/g, '\n')}'`;
         } else {
             body = `--data '${stringifyOpenAPI(body, null, 2).replace(/\\n/g, '\n')}'`;
         }
@@ -321,6 +330,9 @@ const BodyGenerators = {
             code += indent(convertBodyToXML(body), 4);
             code += '`;\n\n';
             body = 'xml';
+        } else if (isYAML(contentType)) {
+            code += `const yamlBody = \`\n${indent(yaml.dump(body), 4)}\`;\n\n`;
+            body = 'yamlBody';
         } else if (isText(contentType)) {
             body = stringifyOpenAPI(body, null, 2);
         } else {
@@ -343,18 +355,37 @@ const BodyGenerators = {
             }
             code += '}\n\n';
             body = 'files';
-        }
-
-        if (isPDF(contentType)) {
+        } else if (isPDF(contentType)) {
             code += 'files = {\n';
             code += `${indent(`"file": "${body}",`, 4)}\n`;
             code += '}\n\n';
             body = 'files';
-        }
-
-        if (isXML(contentType)) {
+        } else if (isXML(contentType)) {
             // Convert JSON to XML if needed
-            body = convertBodyToXML(body);
+            body = JSON.stringify(convertBodyToXML(body));
+        } else if (isYAML(contentType)) {
+            code += `yamlBody = \"\"\"\n${indent(yaml.dump(body), 4)}\"\"\"\n\n`;
+            body = 'yamlBody';
+        } else {
+            body = stringifyOpenAPI(
+                body,
+                (_key, value) => {
+                    switch (value) {
+                        case true:
+                            return '$$__TRUE__$$';
+                        case false:
+                            return '$$__FALSE__$$';
+                        case null:
+                            return '$$__NULL__$$';
+                        default:
+                            return value;
+                    }
+                },
+                2
+            )
+                .replaceAll('"$$__TRUE__$$"', 'True')
+                .replaceAll('"$$__FALSE__$$"', 'False')
+                .replaceAll('"$$__NULL__$$"', 'None');
         }
 
         return { body, code, headers };
@@ -379,6 +410,7 @@ const BodyGenerators = {
                 // Convert JSON to XML if needed
                 return `"${convertBodyToXML(body)}"`;
             },
+            yaml: () => `"${yaml.dump(body).replace(/"/g, '\\"')}"`,
             csv: () => `"${stringifyOpenAPI(body).replace(/"/g, '')}"`,
             default: () => `${stringifyOpenAPI(body, null, 2)}`,
         };
@@ -387,6 +419,7 @@ const BodyGenerators = {
         if (isFormUrlEncoded(contentType)) return typeHandlers.formUrlEncoded();
         if (isText(contentType)) return typeHandlers.text();
         if (isXML(contentType)) return typeHandlers.xml();
+        if (isYAML(contentType)) return typeHandlers.yaml();
         if (isCSV(contentType)) return typeHandlers.csv();
 
         return typeHandlers.default();

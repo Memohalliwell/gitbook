@@ -1,5 +1,4 @@
 import type { DocumentBlock, JSONDocument } from '@gitbook/api';
-import React from 'react';
 
 import {
     SkeletonCard,
@@ -10,8 +9,10 @@ import {
 } from '@/components/primitives';
 import type { ClassValue } from '@/lib/tailwind';
 
+import { nullIfNever } from '@/lib/typescript';
 import { BlockContentRef } from './BlockContentRef';
 import { CodeBlock } from './CodeBlock';
+import { Columns } from './Columns';
 import { Divider } from './Divider';
 import type { DocumentContextProps } from './DocumentView';
 import { Drawing } from './Drawing';
@@ -25,7 +26,7 @@ import { IntegrationBlock } from './Integration';
 import { List } from './List';
 import { ListItem } from './ListItem';
 import { BlockMath } from './Math';
-import { OpenAPIOperation, OpenAPISchemas } from './OpenAPI';
+import { OpenAPIOperation, OpenAPISchemas, OpenAPIWebhook } from './OpenAPI';
 import { Paragraph } from './Paragraph';
 import { Quote } from './Quote';
 import { ReusableContent } from './ReusableContent';
@@ -44,15 +45,8 @@ export interface BlockProps<Block extends DocumentBlock> extends DocumentContext
     style?: ClassValue;
 }
 
-/**
- * Alternative to `assertNever` that returns `null` instead of throwing an error.
- */
-function nullIfNever(_value: never): null {
-    return null;
-}
-
 export function Block<T extends DocumentBlock>(props: BlockProps<T>) {
-    const { block, style, isEstimatedOffscreen, context } = props;
+    const { block } = props;
 
     const content = (() => {
         switch (block.type) {
@@ -68,6 +62,8 @@ export function Block<T extends DocumentBlock>(props: BlockProps<T>) {
                 return <List {...props} block={block} />;
             case 'list-item':
                 return <ListItem {...props} block={block} />;
+            case 'columns':
+                return <Columns {...props} block={block} />;
             case 'code':
                 return <CodeBlock {...props} block={block} />;
             case 'hint':
@@ -85,6 +81,8 @@ export function Block<T extends DocumentBlock>(props: BlockProps<T>) {
                 return <OpenAPIOperation {...props} block={block} />;
             case 'openapi-schemas':
                 return <OpenAPISchemas {...props} block={block} />;
+            case 'openapi-webhook':
+                return <OpenAPIWebhook {...props} block={block} />;
             case 'embed':
                 return <Embed {...props} block={block} />;
             case 'blockquote':
@@ -107,26 +105,20 @@ export function Block<T extends DocumentBlock>(props: BlockProps<T>) {
                 return <Stepper {...props} block={block} />;
             case 'stepper-step':
                 return <StepperStep {...props} block={block} />;
+            case 'if':
+                // If block should be processed by the API.
+                return null;
             case 'image':
             case 'code-line':
             case 'tabs-item':
+            case 'column':
                 throw new Error(`Blocks (${block.type}) should be directly rendered by parent`);
             default:
                 return nullIfNever(block);
         }
     })();
 
-    if (!isEstimatedOffscreen || context.wrapBlocksInSuspense === false) {
-        // When blocks are estimated to be on the initial viewport, we render them immediately
-        // to avoid a flash of a loading skeleton.
-        return content;
-    }
-
-    return (
-        <React.Suspense fallback={<BlockSkeleton block={block} style={style} />}>
-            {content}
-        </React.Suspense>
-    );
+    return content;
 }
 
 /**
@@ -153,18 +145,21 @@ export function BlockSkeleton(props: { block: DocumentBlock; style: ClassValue }
         case 'hint':
         case 'tabs':
         case 'stepper-step':
+        case 'if':
             return <SkeletonParagraph id={id} style={style} />;
         case 'expandable':
         case 'table':
         case 'swagger':
         case 'openapi-operation':
         case 'openapi-schemas':
+        case 'openapi-webhook':
         case 'math':
         case 'divider':
         case 'content-ref':
         case 'integration':
         case 'stepper':
         case 'reusable-content':
+        case 'columns':
             return <SkeletonCard id={id} style={style} />;
         case 'embed':
         case 'images':
@@ -173,6 +168,7 @@ export function BlockSkeleton(props: { block: DocumentBlock; style: ClassValue }
         case 'image':
         case 'code-line':
         case 'tabs-item':
+        case 'column':
             throw new Error(`Blocks (${block.type}) should be directly rendered by parent`);
         default:
             return nullIfNever(block);

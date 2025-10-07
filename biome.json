@@ -18,9 +18,12 @@
             "**/.vercel/**/*",
             "**/.cache/**/*",
             "**/.wrangler/**/*",
+            "packages/embed/standalone/**/*",
             "packages/openapi-parser/src/fixtures/**/*",
             "packages/emoji-codepoints/index.ts",
-            "packages/icons/src/data/*.json"
+            "packages/icons/src/data/*.json",
+            "packages/gitbook/worker-configuration.d.ts",
+            "**/*.css"
         ]
     },
     "formatter": {
@@ -126,7 +129,6 @@
         {
             "include": [
                 "packages/gitbook/**/*",
-                "packages/gitbook-v2/**/*",
                 "packages/react-openapi/**/*",
                 "packages/react-math/**/*",
                 "packages/react-contentkit/**/*",

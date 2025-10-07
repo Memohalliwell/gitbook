@@ -47,7 +47,37 @@ export interface OpenAPICustomOperationProperties {
      * Description in Document format.
      */
     'x-gitbook-description-document'?: object;
+
+    /**
+     * Enums with name and description
+     */
+    'x-enumDescriptions'?: object;
+
+    /**
+     * Enums with name and description
+     */
+    'x-gitbook-enum'?: {
+        [key: string]: {
+            description?: string;
+            name?: string;
+        };
+    };
+
+    /**
+     * Stability of the operation.
+     * @enum 'experimental' | 'alpha' | 'beta'
+     */
+    'x-stability'?: OpenAPIStability;
 }
+
+/**
+ * Custom properties that can be defined to enable prefilling for OpenAPI blocks (e.g TryIt functionality).
+ */
+export interface OpenAPICustomPrefillProperties {
+    'x-gitbook-prefill'?: string;
+}
+
+export type OpenAPIStability = 'experimental' | 'alpha' | 'beta';
 
 /**
  * Custom code samples that can be defined at the operation level.
@@ -56,7 +86,7 @@ export interface OpenAPICustomOperationProperties {
  */
 export interface OpenAPICustomCodeSample {
     lang: string;
-    label: string;
+    label?: string;
     source: string;
 }
 

@@ -1,88 +1,87 @@
 import type { SiteSpace } from '@gitbook/api';
+import { useMemo } from 'react';
 
+import type { GitBookSiteContext } from '@/lib/context';
+import { getSiteSpaceURL } from '@/lib/sites';
 import { tcls } from '@/lib/tailwind';
+import { Button, type ButtonProps } from '../primitives';
+import { DropdownChevron, DropdownMenu } from '../primitives/DropdownMenu';
+import { SpacesDropdownMenuItems } from './SpacesDropdownMenuItem';
 
-import type { GitBookSiteContext } from '@v2/lib/context';
-import { Dropdown, DropdownChevron, DropdownMenu } from './Dropdown';
-import { SpacesDropdownMenuItem } from './SpacesDropdownMenuItem';
+// Memoized regex for checking if a string starts with an emoji
+const EMOJI_REGEX = /^\p{Emoji}/u;
+
+function startsWithEmoji(text: string): boolean {
+    return EMOJI_REGEX.test(text);
+}
 
 export function SpacesDropdown(props: {
     context: GitBookSiteContext;
     siteSpace: SiteSpace;
     siteSpaces: SiteSpace[];
     className?: string;
+    variant?: ButtonProps['variant'];
+    icon?: ButtonProps['icon'];
 }) {
-    const { context, siteSpace, siteSpaces, className } = props;
-    const { linker } = context;
+    const { context, siteSpace, siteSpaces, className, variant = 'secondary', icon } = props;
 
     return (
-        <Dropdown
+        <DropdownMenu
             className={tcls(
                 'group-hover/dropdown:invisible', // Prevent hover from opening the dropdown, as it's annoying in this context
                 'group-focus-within/dropdown:group-hover/dropdown:visible' // When the dropdown is already open, it should remain visible when hovered
             )}
-            button={(buttonProps) => (
-                <div
-                    {...buttonProps}
+            button={
+                <Button
+                    icon={icon}
                     data-testid="space-dropdown-button"
-                    className={tcls(
-                        'flex',
-                        'flex-row',
-                        'items-center',
-                        'transition-all',
-                        'hover:cursor-pointer',
-
-                        'px-3',
-                        'py-2',
-                        'gap-2',
-
-                        'rounded-md',
-                        'straight-corners:rounded-none',
-
-                        'bg-tint-base',
-                        'group-hover/dropdown:bg-tint-base',
-                        'group-focus-within/dropdown:bg-tint-base',
-
-                        'text-sm',
-                        'text-tint',
-                        'group-hover/dropdown:text-tint-strong',
-                        'group-focus-within/dropdown:text-tint-strong',
-
-                        'ring-1',
-                        'ring-tint-subtle',
-                        'group-hover/dropdown:ring-tint-hover',
-                        'group-focus-within/dropdown:ring-tint-hover',
-
-                        'contrast-more:bg-tint-base',
-                        'contrast-more:ring-1',
-                        'contrast-more:group-hover/dropdown:ring-2',
-                        'contrast-more:ring-tint',
-                        'contrast-more:group-hover/dropdown:ring-tint-hover',
-                        'contrast-more:group-focus-within/dropdown:ring-tint-hover',
-
-                        className
-                    )}
+                    size="medium"
+                    variant={variant}
+                    trailing={<DropdownChevron />}
+                    className={tcls('bg-tint-base', className)}
                 >
-                    <span className={tcls('line-clamp-1', 'grow')}>{siteSpace.title}</span>
-                    <DropdownChevron />
-                </div>
-            )}
+                    <span className="button-content">{siteSpace.title}</span>
+                </Button>
+            }
         >
-            <DropdownMenu>
-                {siteSpaces.map((otherSiteSpace, index) => (
-                    <SpacesDropdownMenuItem
-                        key={`${otherSiteSpace.id}-${index}`}
-                        variantSpace={{
-                            id: otherSiteSpace.id,
-                            title: otherSiteSpace.title,
-                            url: otherSiteSpace.urls.published
-                                ? linker.toLinkForContent(otherSiteSpace.urls.published)
-                                : otherSiteSpace.space.urls.app,
-                        }}
-                        active={otherSiteSpace.id === siteSpace.id}
-                    />
-                ))}
-            </DropdownMenu>
-        </Dropdown>
+            <SpacesDropdownMenuItems
+                slimSpaces={siteSpaces.map((space) => ({
+                    id: space.id,
+                    title: space.title,
+                    url: getSiteSpaceURL(context, space),
+                    isActive: space.id === siteSpace.id,
+                }))}
+                curPath={siteSpace.path}
+            />
+        </DropdownMenu>
+    );
+}
+
+export function TranslationsDropdown(props: {
+    context: GitBookSiteContext;
+    siteSpace: SiteSpace;
+    siteSpaces: SiteSpace[];
+    className?: string;
+}) {
+    const { context, siteSpace, siteSpaces, className } = props;
+
+    // Memoize the emoji check to avoid repeated regex execution
+    const hasEmojiPrefix = useMemo(() => startsWithEmoji(siteSpace.title), [siteSpace.title]);
+
+    return (
+        <SpacesDropdown
+            icon="globe"
+            context={context}
+            siteSpace={siteSpace}
+            siteSpaces={siteSpaces}
+            variant="blank"
+            className={tcls(
+                '-mx-2 bg-transparent px-2 md:py-1 lg:max-w-64 max-md:[&_.button-content]:hidden',
+                hasEmojiPrefix
+                    ? 'md:[&_.button-leading-icon]:hidden' // If the title starts with an emoji, don't show the icon (on desktop)
+                    : '',
+                className
+            )}
+        />
     );
 }

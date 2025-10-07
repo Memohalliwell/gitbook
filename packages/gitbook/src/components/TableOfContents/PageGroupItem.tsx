@@ -1,46 +1,28 @@
-import type { RevisionPage, RevisionPageGroup } from '@gitbook/api';
-import type { GitBookSiteContext } from '@v2/lib/context';
+'use client';
 
-import { hasPageVisibleDescendant } from '@/lib/pages';
+import type { ClientTOCPageGroup } from './encodeClientTableOfContents';
+
 import { tcls } from '@/lib/tailwind';
 
 import { PagesList } from './PagesList';
 import { TOCPageIcon } from './TOCPageIcon';
 
-export function PageGroupItem(props: {
-    rootPages: RevisionPage[];
-    page: RevisionPageGroup;
-    context: GitBookSiteContext;
-}) {
-    const { rootPages, page, context } = props;
+export function PageGroupItem(props: { page: ClientTOCPageGroup }) {
+    const { page } = props;
 
     return (
-        <li className={tcls('flex', 'flex-col', 'group/page-group-item')}>
+        <li className="group/page-group-item flex flex-col">
             <div
                 className={tcls(
-                    'flex',
-                    'items-center',
-
-                    'gap-3',
-                    'px-3',
-                    'z-[1]',
-                    'sticky',
-                    '-top-5',
-                    'pt-6',
-                    'group-first/page-group-item:-mt-5',
+                    '-top-6 group-first/page-group-item:-mt-6 sticky z-1 flex items-center gap-3 px-3 pt-6',
+                    'font-semibold text-xs uppercase tracking-wide',
                     'pb-3', // Add extra padding to make the header fade a bit nicer
                     '-mb-1.5', // Then pull the page items a bit closer, effective bottom padding is 1.5 units / 6px.
-
-                    'text-xs',
-                    'tracking-wide',
-                    'font-semibold',
-                    'uppercase',
-
-                    '[mask-image:linear-gradient(rgba(0,0,0,1)_70%,rgba(0,0,0,0))]', // Fade out effect of fixed page items. We want the fade to start past the header, this is a good approximation.
+                    'mask-[linear-gradient(rgba(0,0,0,1)_70%,rgba(0,0,0,0))]', // Fade out effect of fixed page items. We want the fade to start past the header, this is a good approximation.
                     'bg-tint-base',
                     'sidebar-filled:bg-tint-subtle',
                     'theme-muted:bg-tint-subtle',
-                    'theme-bold-tint:bg-tint-subtle',
+                    '[html.sidebar-filled.theme-bold.tint_&]:bg-tint-subtle',
                     '[html.sidebar-filled.theme-muted_&]:bg-tint-base',
                     '[html.sidebar-filled.theme-bold.tint_&]:bg-tint-base',
                     '[html.sidebar-default.theme-gradient_&]:bg-gradient-primary',
@@ -50,8 +32,8 @@ export function PageGroupItem(props: {
                 <TOCPageIcon page={page} />
                 {page.title}
             </div>
-            {hasPageVisibleDescendant(page) ? (
-                <PagesList rootPages={rootPages} pages={page.pages} context={context} />
+            {page.descendants && page.descendants.length > 0 ? (
+                <PagesList pages={page.descendants} />
             ) : null}
         </li>
     );

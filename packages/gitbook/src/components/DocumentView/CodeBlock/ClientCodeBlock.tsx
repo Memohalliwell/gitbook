@@ -3,16 +3,19 @@
 import type { DocumentBlockCode } from '@gitbook/api';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { useAdaptiveVisitor } from '@/components/Adaptive';
 import { useInViewportListener } from '@/components/hooks/useInViewportListener';
 import { useScrollListener } from '@/components/hooks/useScrollListener';
 import { useDebounceCallback } from 'usehooks-ts';
 import type { BlockProps } from '../Block';
+import { type InlineExpressionVariables, useEvaluateInlineExpression } from '../InlineExpression';
 import { CodeBlockRenderer } from './CodeBlockRenderer';
 import type { HighlightLine, RenderedInline } from './highlight';
 import { plainHighlight } from './plain-highlight';
 
 type ClientBlockProps = Pick<BlockProps<DocumentBlockCode>, 'block' | 'style'> & {
     inlines: RenderedInline[];
+    inlineExprVariables: InlineExpressionVariables;
 };
 
 /**
@@ -20,12 +23,23 @@ type ClientBlockProps = Pick<BlockProps<DocumentBlockCode>, 'block' | 'style'> &
  * It allows us to defer some load to avoid blocking the rendering of the whole page with block highlighting.
  */
 export function ClientCodeBlock(props: ClientBlockProps) {
-    const { block, style, inlines } = props;
+    const { block, style, inlines, inlineExprVariables } = props;
     const blockRef = useRef<HTMLDivElement>(null);
     const isInViewportRef = useRef(false);
     const [isInViewport, setIsInViewport] = useState(false);
-    const plainLines = useMemo(() => plainHighlight(block, []), [block]);
+
+    const getAdaptiveVisitorClaims = useAdaptiveVisitor();
+    const visitorClaims = getAdaptiveVisitorClaims();
+    const evaluateInlineExpression = useEvaluateInlineExpression({
+        visitorClaims,
+        variables: inlineExprVariables,
+    });
+    const plainLines = useMemo(
+        () => plainHighlight(block, inlines, { evaluateInlineExpression }),
+        [block, inlines, evaluateInlineExpression]
+    );
     const [lines, setLines] = useState<null | HighlightLine[]>(null);
+    const [highlighting, setHighlighting] = useState(false);
 
     // Preload the highlighter when the block is mounted.
     useEffect(() => {
@@ -77,13 +91,15 @@ export function ClientCodeBlock(props: ClientBlockProps) {
             let cancelled = false;
 
             if (typeof window !== 'undefined') {
+                setHighlighting(true);
                 import('./highlight').then(({ highlight }) => {
-                    highlight(block, inlines).then((lines) => {
+                    highlight(block, inlines, { evaluateInlineExpression }).then((lines) => {
                         if (cancelled) {
                             return;
                         }
 
                         setLines(lines);
+                        setHighlighting(false);
                     });
                 });
             }
@@ -95,9 +111,15 @@ export function ClientCodeBlock(props: ClientBlockProps) {
 
         // Otherwise if the block is not in viewport, we reset to the plain lines
         setLines(null);
-    }, [isInViewport, block, inlines]);
+    }, [isInViewport, block, inlines, evaluateInlineExpression]);
 
     return (
-        <CodeBlockRenderer ref={blockRef} block={block} style={style} lines={lines ?? plainLines} />
+        <CodeBlockRenderer
+            ref={blockRef}
+            aria-busy={highlighting}
+            block={block}
+            style={style}
+            lines={lines ?? plainLines}
+        />
     );
 }
